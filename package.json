@@ -1,0 +1,24 @@
+{
+  "name": "github-agent",
+  "version": "1.0.0",
+  "main": "src/pipeline.js",
+  "scripts": {
+    "test": "jest",
+    "issue": "node src/pipeline.js issue",
+    "review": "node src/pipeline.js review"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Two-agent GitHub engineering system: issue->fix and PR->review",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
+    "@octokit/rest": "^22.0.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "simple-git": "^3.36.0"
+  },
+  "devDependencies": {
+    "jest": "^30.3.0"
+  }
+}

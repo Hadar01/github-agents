@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>github-agent — live</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --panel: #14141c;
+      --border: #2a2a36;
+      --text: #e0e0e8;
+      --dim: #888;
+      --accent: #4ec9b0;
+      --thought: #569cd6;
+      --tool: #c586c0;
+      --ok: #6a9955;
+      --err: #f44747;
+      --warn: #d7ba7d;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'SF Mono', Menlo, Consolas, monospace; }
+    header { padding: 1rem 2rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--bg); z-index: 10; }
+    header h1 { margin: 0; font-size: 1rem; color: var(--accent); }
+    header .status { font-size: 0.85rem; color: var(--dim); }
+    header .status.live::before { content: "● "; color: var(--ok); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    main { max-width: 1100px; margin: 0 auto; padding: 1rem 2rem; }
+    .event { margin: 0.4rem 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--border); background: var(--panel); border-radius: 0 4px 4px 0; font-size: 0.9rem; line-height: 1.5; word-break: break-word; }
+    .event .turn { color: var(--dim); font-size: 0.75rem; margin-right: 0.5rem; }
+    .event.stage { border-color: var(--accent); color: var(--accent); font-weight: bold; font-size: 1rem; margin-top: 1.2rem; }
+    .event.thought { border-color: var(--thought); color: var(--thought); font-style: italic; }
+    .event.tool { border-color: var(--tool); }
+    .event.tool .name { color: var(--tool); font-weight: bold; }
+    .event.tool .preview { color: var(--dim); font-size: 0.8rem; }
+    .event.ok { border-color: var(--ok); color: var(--ok); padding-left: 1.5rem; }
+    .event.err { border-color: var(--err); color: var(--err); }
+    .event.warn { border-color: var(--warn); color: var(--warn); }
+    .event.cost { border-color: var(--err); color: var(--err); font-weight: bold; }
+    .empty { color: var(--dim); padding: 4rem 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🤖 github-agent — live feed</h1>
+    <div class="status" id="status">connecting…</div>
+  </header>
+  <main>
+    <div id="feed"></div>
+    <div class="empty" id="empty">Waiting for events. Run an issue with <code>--web</code> to start.</div>
+  </main>
+  <script>
+    const feed = document.getElementById('feed');
+    const empty = document.getElementById('empty');
+    const status = document.getElementById('status');
+
+    function renderEvent(e) {
+      empty.style.display = 'none';
+      const div = document.createElement('div');
+      div.className = 'event';
+
+      if (e.stage) {
+        div.classList.add('stage');
+        const verdict = e.verdict ? ` — ${e.verdict}` : '';
+        div.textContent = `▸ ${e.stage}${verdict}`;
+      } else if (e.type === 'thought') {
+        div.classList.add('thought');
+        div.innerHTML = `<span class="turn">[turn ${e.turn}]</span>💭 ${escapeHtml(e.text)}`;
+      } else if (e.type === 'tool_call') {
+        div.classList.add('tool');
+        div.innerHTML = `<span class="turn">[turn ${e.turn}]</span>🔧 <span class="name">${escapeHtml(e.name)}</span> <span class="preview">${escapeHtml(e.preview || '')}</span>`;
+      } else if (e.type === 'tool_result') {
+        if (e.ok) {
+          div.classList.add('ok');
+          div.textContent = '✓ ok';
+        } else {
+          div.classList.add('err');
+          div.textContent = `✗ ${e.error || 'error'}`;
+        }
+      } else if (e.type === 'finished') {
+        div.classList.add('stage');
+        div.textContent = `✅ Agent finished after ${e.turn} turn(s)`;
+      } else if (e.type === 'iteration_limit') {
+        div.classList.add('warn');
+        div.textContent = `⚠ Iteration limit reached at turn ${e.turn}`;
+      } else if (e.type === 'no_tools') {
+        div.classList.add('warn');
+        div.textContent = `⚠ Agent stopped without finish (stop_reason=${e.stop_reason})`;
+      } else if (e.type === 'cost_limit_hit') {
+        div.classList.add('cost');
+        div.textContent = `🛑 Cost limit hit at turn ${e.turn}: $${e.costUsd.toFixed(4)} > $${e.limit}`;
+      } else if (e.type === 'turn_start') {
+        return; // suppress noise
+      } else {
+        div.textContent = JSON.stringify(e);
+      }
+
+      feed.appendChild(div);
+      window.scrollTo(0, document.body.scrollHeight);
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    function connect() {
+      const es = new EventSource('/events');
+      es.onopen = () => { status.textContent = 'live'; status.classList.add('live'); };
+      es.onerror = () => { status.textContent = 'reconnecting…'; status.classList.remove('live'); };
+      es.onmessage = (msg) => {
+        try {
+          renderEvent(JSON.parse(msg.data));
+        } catch (err) {
+          console.error('bad event', err, msg.data);
+        }
+      };
+    }
+
+    connect();
+  </script>
+</body>
+</html>

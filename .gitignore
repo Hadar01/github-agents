@@ -1,0 +1,6 @@
+node_modules/
+.env
+repos/
+audit-trail.md
+review-report.md
+coverage/
