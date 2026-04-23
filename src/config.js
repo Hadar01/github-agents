@@ -11,9 +11,10 @@ module.exports = {
   TOOL_OUTPUT_TRUNCATE: 8000,
 
   // Cost per 1M tokens (USD) — for the audit trail summary line
-  COST_INPUT_PER_MTOK: 15.0,
-  COST_OUTPUT_PER_MTOK: 75.0,
-  COST_CACHE_READ_PER_MTOK: 1.5,
+  // Claude 3.5 Sonnet pricing; update here if rates change
+  COST_INPUT_PER_MTOK: 3.0,
+  COST_OUTPUT_PER_MTOK: 15.0,
+  COST_CACHE_READ_PER_MTOK: 0.30,
 
   // Hard kill switch — abort an agent loop if its cost crosses this many USD.
   // Override per-run with --max-cost=X.XX
