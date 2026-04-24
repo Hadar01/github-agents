@@ -9,6 +9,40 @@ function previewInput(input) {
   return json.slice(0, 137) + '...';
 }
 
+const RETRYABLE_NETWORK_CODES = new Set([
+  'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED', 'ENETUNREACH', 'EPIPE'
+]);
+
+function isRetryable(err) {
+  if (!err) return false;
+  const status = err.status || (err.response && err.response.status);
+  if (status === 429 || status === 529) return true;
+  if (status >= 500 && status < 600) return true;
+  const code = err.code || (err.cause && err.cause.code);
+  if (code && RETRYABLE_NETWORK_CODES.has(code)) return true;
+  return false;
+}
+
+async function callWithRetry(fn, {
+  maxAttempts = 3,
+  baseDelayMs = 1000,
+  onRetry = () => {}
+} = {}) {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (attempt === maxAttempts || !isRetryable(e)) throw e;
+      const delay = baseDelayMs * Math.pow(2, attempt - 1);
+      onRetry({ attempt, nextAttempt: attempt + 1, delayMs: delay, error: e });
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw lastErr;
+}
+
 async function runAgentLoop({
   systemPrompt,
   userPrompt,
@@ -16,7 +50,8 @@ async function runAgentLoop({
   maxIterations = MAX_AGENT_ITERATIONS,
   maxTokens = MAX_TURN_OUTPUT_TOKENS,
   costLimitUsd = null,
-  onEvent = () => {}
+  onEvent = () => {},
+  retryBaseDelayMs = 1000
 }) {
   const client = new Anthropic();
   const messages = [{ role: 'user', content: userPrompt }];
@@ -26,17 +61,27 @@ async function runAgentLoop({
   let stopReason = null;
   let turn = 0;
   let aborted = null;
+  let sawPassingTests = false; // flipped true when run_tests returns passed:true
+  let sawPassingLint = null;   // null=not run, true=passed, false=last run failed
+  let gaveUp = null;           // set when agent calls give_up
 
   for (turn = 1; turn <= maxIterations; turn++) {
     onEvent({ type: 'turn_start', turn });
 
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: maxTokens,
-      tools: TOOLS,
-      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-      messages
-    });
+    const response = await callWithRetry(
+      () => client.messages.create({
+        model: MODEL,
+        max_tokens: maxTokens,
+        tools: TOOLS,
+        system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+        messages
+      }),
+      {
+        maxAttempts: 3,
+        baseDelayMs: retryBaseDelayMs,
+        onRetry: (info) => onEvent({ type: 'api_retry', turn, ...info })
+      }
+    );
 
     addUsage(usage, response.usage || {});
     stopReason = response.stop_reason;
@@ -70,9 +115,20 @@ async function runAgentLoop({
     for (const call of toolCalls) {
       onEvent({ type: 'tool_call', turn, name: call.name, preview: previewInput(call.input) });
       const result = await dispatchTool(call.name, call.input, ctx);
-      onEvent({ type: 'tool_result', turn, name: call.name, ok: result.ok, error: result.error });
+      onEvent({
+        type: 'tool_result', turn, name: call.name,
+        ok: result.ok, error: result.error,
+        flaky: result.flaky, attempts: result.attempts
+      });
 
       history.push({ turn, kind: 'tool', name: call.name, input: call.input, result });
+
+      if (call.name === 'run_tests' && result.ok && result.passed) {
+        sawPassingTests = true;
+      }
+      if (call.name === 'run_lint' && result.ok) {
+        sawPassingLint = result.passed;
+      }
 
       toolResults.push({
         type: 'tool_result',
@@ -84,6 +140,14 @@ async function runAgentLoop({
       if (call.name === 'finish' && result.ok) {
         finalSummary = call.input.pr_summary;
       }
+      if (call.name === 'give_up' && result.ok) {
+        gaveUp = {
+          reason: result.reason,
+          explanation: result.explanation,
+          blockers: result.blockers
+        };
+        aborted = 'gave_up';
+      }
     }
 
     messages.push({ role: 'user', content: toolResults });
@@ -92,13 +156,21 @@ async function runAgentLoop({
       onEvent({ type: 'finished', turn, summary: finalSummary });
       break;
     }
+    if (gaveUp) {
+      onEvent({ type: 'gave_up', turn, ...gaveUp });
+      break;
+    }
   }
 
   if (!finalSummary && !aborted && turn > maxIterations) {
     onEvent({ type: 'iteration_limit', turn: maxIterations });
   }
 
-  return { usage, history, finalSummary, completedTurns: turn, stopReason, aborted };
+  return {
+    usage, history, finalSummary,
+    completedTurns: turn, stopReason, aborted,
+    sawPassingTests, sawPassingLint, gaveUp
+  };
 }
 
-module.exports = { runAgentLoop };
+module.exports = { runAgentLoop, callWithRetry, isRetryable };

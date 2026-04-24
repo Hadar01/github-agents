@@ -17,14 +17,22 @@ function extractVerdict(reviewText) {
   return 'UNKNOWN';
 }
 
-async function runEngineeringWithSelfReview({ issue, repoPath, testCommand, costLimitUsd, onEvent }) {
+async function runEngineeringWithSelfReview({
+  issue, repoPath, testCommand, costLimitUsd, onEvent,
+  lintCommands, subPackage, contributing, relevantFileHints
+}) {
   onEvent({ stage: 'engineering_start' });
   const engineering = await runEngineeringAgent({
-    issue, repoPath, testCommand, costLimitUsd, onEvent
+    issue, repoPath, testCommand, costLimitUsd, onEvent,
+    lintCommands, subPackage, contributing, relevantFileHints
   });
 
   if (!engineering.finalSummary) {
-    onEvent({ stage: 'engineering_aborted', reason: engineering.aborted || 'no_finish' });
+    onEvent({
+      stage: 'engineering_aborted',
+      reason: engineering.aborted || 'no_finish',
+      gaveUp: engineering.gaveUp || undefined
+    });
     return { engineering, review: null, revision: null };
   }
 
@@ -38,7 +46,9 @@ async function runEngineeringWithSelfReview({ issue, repoPath, testCommand, cost
   const review = await runReviewCopilot({
     pr: { title: issue.title, body: engineering.finalSummary },
     diff,
-    fileMap: {}
+    fileMap: {},
+    issueTitle: issue.title,
+    issueBody: issue.body || ''
   });
   onEvent({ stage: 'self_review_done', verdict: extractVerdict(review) });
 
@@ -99,21 +109,186 @@ async function openPullRequest({ octokit, owner, repo, headOwner, branch, base, 
   return pr;
 }
 
+function exists(p) { try { return fs.existsSync(p); } catch { return false; } }
+function readIfExists(p) {
+  try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
+}
+
+// ---------------------------------------------------------------------------
+// Test command detection
+//
+// Walked in priority order; returns the *most specific* runner the project
+// defines, not just "pytest" as a fallback. For scientific-Python repos like
+// Qiskit/Cirq/TQEC the actual test entrypoint is usually tox, nox, or a
+// Makefile target — not bare pytest.
 function detectTestCommand(repoPath) {
+  // 1. Makefile with a `test:` target.
+  for (const name of ['Makefile', 'makefile', 'GNUmakefile']) {
+    const mk = readIfExists(path.join(repoPath, name));
+    if (mk && /^\s*test\s*:/m.test(mk)) return 'make test';
+  }
+
+  // 2. tox / nox — strong signals when present.
+  if (exists(path.join(repoPath, 'tox.ini'))) return 'tox';
+  if (exists(path.join(repoPath, 'noxfile.py'))) return 'nox';
+
+  // 3. Node (package.json scripts.test).
   const pkgPath = path.join(repoPath, 'package.json');
-  if (fs.existsSync(pkgPath)) {
+  if (exists(pkgPath)) {
     try {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
       if (pkg.scripts && pkg.scripts.test) return 'npm test';
     } catch {}
   }
-  if (fs.existsSync(path.join(repoPath, 'pytest.ini')) ||
-      fs.existsSync(path.join(repoPath, 'pyproject.toml'))) {
+
+  // 4. Python.
+  if (exists(path.join(repoPath, 'pytest.ini')) ||
+      exists(path.join(repoPath, 'pyproject.toml')) ||
+      exists(path.join(repoPath, 'setup.cfg'))) {
     return 'pytest';
   }
-  if (fs.existsSync(path.join(repoPath, 'go.mod'))) return 'go test ./...';
-  if (fs.existsSync(path.join(repoPath, 'Cargo.toml'))) return 'cargo test';
+
+  // 5. Go / Rust.
+  if (exists(path.join(repoPath, 'go.mod'))) return 'go test ./...';
+  if (exists(path.join(repoPath, 'Cargo.toml'))) return 'cargo test';
+
   return 'npm test';
+}
+
+// ---------------------------------------------------------------------------
+// Lint / format / typecheck command detection.
+//
+// Returns a list — a well-run Python project has several of these gated in
+// CI, and getting tests green while failing ruff is a common silent failure.
+function detectLintCommands(repoPath) {
+  const cmds = [];
+  const pyproject = readIfExists(path.join(repoPath, 'pyproject.toml')) || '';
+  const setupCfg = readIfExists(path.join(repoPath, 'setup.cfg')) || '';
+  const tooling = pyproject + '\n' + setupCfg;
+
+  if (exists(path.join(repoPath, 'ruff.toml')) || /\[tool\.ruff\b/.test(tooling)) cmds.push('ruff check .');
+  if (/\[tool\.black\b/.test(tooling) || exists(path.join(repoPath, '.black'))) cmds.push('black --check .');
+  if (/\[tool\.mypy\b/.test(tooling) || exists(path.join(repoPath, 'mypy.ini'))) cmds.push('mypy .');
+  if (exists(path.join(repoPath, '.flake8')) || /\[flake8\b/.test(tooling)) cmds.push('flake8 .');
+  if (exists(path.join(repoPath, '.pylintrc')) || /\[tool\.pylint\b/.test(tooling)) cmds.push('pylint');
+
+  // JS/TS
+  if (exists(path.join(repoPath, '.eslintrc')) ||
+      exists(path.join(repoPath, '.eslintrc.json')) ||
+      exists(path.join(repoPath, '.eslintrc.js')) ||
+      exists(path.join(repoPath, 'eslint.config.js'))) {
+    cmds.push('eslint .');
+  }
+  if (exists(path.join(repoPath, '.prettierrc')) ||
+      exists(path.join(repoPath, '.prettierrc.json')) ||
+      exists(path.join(repoPath, 'prettier.config.js'))) {
+    cmds.push('prettier --check .');
+  }
+
+  return cmds;
+}
+
+// ---------------------------------------------------------------------------
+// Monorepo sub-package detection.
+//
+// Looks for Python/Node/Rust sub-packages one level deep. Returns
+// [{ path, kind, name }]. Empty = flat repo.
+function detectSubPackages(repoPath) {
+  const results = [];
+  let entries = [];
+  try {
+    entries = fs.readdirSync(repoPath, { withFileTypes: true });
+  } catch { return results; }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const sub = path.join(repoPath, entry.name);
+    if (exists(path.join(sub, 'pyproject.toml')) || exists(path.join(sub, 'setup.py'))) {
+      results.push({ path: entry.name, kind: 'python', name: entry.name });
+    } else if (exists(path.join(sub, 'package.json'))) {
+      results.push({ path: entry.name, kind: 'node', name: entry.name });
+    } else if (exists(path.join(sub, 'Cargo.toml'))) {
+      results.push({ path: entry.name, kind: 'rust', name: entry.name });
+    }
+  }
+  return results;
+}
+
+// Guess which sub-package an issue refers to, by scoring issue text against
+// sub-package names.
+function guessSubPackageForIssue(subPackages, issueText) {
+  if (!subPackages.length || !issueText) return null;
+  const text = String(issueText).toLowerCase();
+  let best = null;
+  let bestScore = 0;
+  for (const sub of subPackages) {
+    const name = sub.name.toLowerCase();
+    // Match on full name and on the last hyphen-segment (qiskit-terra → terra).
+    const tail = name.split(/[-_]/).pop();
+    let score = 0;
+    if (text.includes(name)) score += 5;
+    if (tail && tail.length >= 3 && text.includes(tail)) score += 2;
+    if (score > bestScore) { bestScore = score; best = sub; }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// Contribution guidelines: reads CONTRIBUTING + PR template, detects DCO.
+function readContributionGuidelines(repoPath) {
+  const candidates = [
+    'CONTRIBUTING.md', 'CONTRIBUTING.rst', 'CONTRIBUTING',
+    path.join('.github', 'CONTRIBUTING.md'),
+    path.join('docs', 'CONTRIBUTING.md')
+  ];
+  let contributing = null;
+  for (const c of candidates) {
+    const full = path.join(repoPath, c);
+    const txt = readIfExists(full);
+    if (txt) { contributing = { path: c, text: txt }; break; }
+  }
+
+  const prTemplateCandidates = [
+    path.join('.github', 'PULL_REQUEST_TEMPLATE.md'),
+    path.join('.github', 'pull_request_template.md'),
+    path.join('docs', 'pull_request_template.md'),
+    'PULL_REQUEST_TEMPLATE.md'
+  ];
+  let prTemplate = null;
+  for (const c of prTemplateCandidates) {
+    const full = path.join(repoPath, c);
+    const txt = readIfExists(full);
+    if (txt) { prTemplate = { path: c, text: txt }; break; }
+  }
+
+  // DCO detection: most projects mention "Signed-off-by" or "DCO" in
+  // CONTRIBUTING or ship a .github/dco.yml.
+  const dcoYml = exists(path.join(repoPath, '.github', 'dco.yml')) ||
+                 exists(path.join(repoPath, '.dco.yml'));
+  const dcoMentioned = contributing && /signed[- ]off[- ]by|\bDCO\b|Developer Certificate of Origin/i.test(contributing.text);
+  const requiresDco = Boolean(dcoYml || dcoMentioned);
+
+  return { contributing, prTemplate, requiresDco };
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate PR guard: scan open PRs for ones that already resolve the issue.
+async function findExistingPrForIssue(octokit, owner, repo, issueNumber) {
+  try {
+    const { data: prs } = await octokit.pulls.list({
+      owner, repo, state: 'open', per_page: 100
+    });
+    const needleBranch = `fix/issue-${issueNumber}`;
+    const needleBody = new RegExp(`(resolves|closes|fixes)\\s+#${issueNumber}\\b`, 'i');
+    for (const pr of prs) {
+      if (pr.head && pr.head.ref === needleBranch) return pr;
+      if (pr.body && needleBody.test(pr.body)) return pr;
+      if (pr.title && needleBody.test(pr.title)) return pr;
+    }
+  } catch {
+    // Non-fatal — just skip the dedupe check on API failure.
+  }
+  return null;
 }
 
 module.exports = {
@@ -122,6 +297,11 @@ module.exports = {
   commitAndPush,
   openPullRequest,
   detectTestCommand,
+  detectLintCommands,
+  detectSubPackages,
+  guessSubPackageForIssue,
+  readContributionGuidelines,
+  findExistingPrForIssue,
   extractVerdict,
   detectsRequestChanges
 };

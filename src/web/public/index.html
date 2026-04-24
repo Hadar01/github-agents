@@ -70,8 +70,13 @@
         div.innerHTML = `<span class="turn">[turn ${e.turn}]</span>🔧 <span class="name">${escapeHtml(e.name)}</span> <span class="preview">${escapeHtml(e.preview || '')}</span>`;
       } else if (e.type === 'tool_result') {
         if (e.ok) {
-          div.classList.add('ok');
-          div.textContent = '✓ ok';
+          if (e.flaky) {
+            div.classList.add('warn');
+            div.textContent = `⚠ ok (flaky: passed after ${e.attempts} attempts)`;
+          } else {
+            div.classList.add('ok');
+            div.textContent = '✓ ok';
+          }
         } else {
           div.classList.add('err');
           div.textContent = `✗ ${e.error || 'error'}`;

@@ -17,8 +17,18 @@ function formatFileMap(fileMap) {
     .join('\n\n');
 }
 
-function buildReviewPrompt({ prTitle, prBody, diff, fileMap }) {
-  return `# Pull Request
+function buildReviewPrompt({ prTitle, prBody, diff, fileMap, issueTitle, issueBody }) {
+  const originalIssueBlock = issueTitle
+    ? `# Original Issue
+Title: ${issueTitle}
+
+Body:
+${issueBody || '(no body provided)'}
+
+`
+    : '';
+
+  return `${originalIssueBlock}# Pull Request
 Title: ${prTitle}
 
 Body:
@@ -37,6 +47,8 @@ headings.
 
 ## 1. Bug Risk
 Identify potential bugs introduced by this change. Cite file:line for each.
+If an original issue was provided above, also flag anywhere the diff drifts
+from — or fails to address — the original issue's stated intent.
 
 ## 2. Edge Cases
 Enumerate edge cases the author may have missed. Be specific — input shapes,

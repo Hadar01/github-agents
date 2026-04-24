@@ -55,9 +55,10 @@ function usageSummary(label, usage) {
   return `${c.bold}${label}${c.reset}\n` +
     `  input: ${usage.input_tokens.toLocaleString()} tok` +
     `  · output: ${usage.output_tokens.toLocaleString()} tok` +
-    `  · cache_read: ${usage.cache_read_input_tokens.toLocaleString()} tok\n` +
+    `  · cache_read: ${usage.cache_read_input_tokens.toLocaleString()} tok` +
+    `  · cache_create: ${(usage.cache_creation_input_tokens || 0).toLocaleString()} tok\n` +
     `  ${c.green}cost: $${cost.total_usd.toFixed(4)}${c.reset}` +
-    ` ${c.dim}(in $${cost.input_usd.toFixed(4)} + out $${cost.output_usd.toFixed(4)} + cache $${cost.cache_read_usd.toFixed(4)})${c.reset}`;
+    ` ${c.dim}(in $${cost.input_usd.toFixed(4)} + out $${cost.output_usd.toFixed(4)} + cache_r $${cost.cache_read_usd.toFixed(4)} + cache_c $${cost.cache_creation_usd.toFixed(4)})${c.reset}`;
 }
 
 function makeAgentEventHandler(log) {
@@ -75,8 +76,12 @@ function makeAgentEventHandler(log) {
       return;
     }
     if (e.type === 'tool_result') {
-      if (e.ok) log(`${c.dim}     → ok${c.reset}`);
-      else log(err(`     → ${e.error}`));
+      if (e.ok) {
+        if (e.flaky) log(warn(`     → ok (flaky: passed after ${e.attempts} attempts)`));
+        else log(`${c.dim}     → ok${c.reset}`);
+      } else {
+        log(err(`     → ${e.error}`));
+      }
       return;
     }
     if (e.type === 'finished') {
@@ -93,6 +98,11 @@ function makeAgentEventHandler(log) {
     }
     if (e.type === 'cost_limit_hit') {
       log(err(`Cost limit hit at turn ${e.turn}: $${e.costUsd.toFixed(4)} > $${e.limit}`));
+      return;
+    }
+    if (e.type === 'api_retry') {
+      const reason = (e.error && (e.error.status || e.error.code)) || 'unknown';
+      log(warn(`API call failed (${reason}); retrying in ${e.delayMs}ms (attempt ${e.nextAttempt})`));
       return;
     }
   };
