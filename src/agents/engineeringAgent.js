@@ -5,13 +5,25 @@ const {
   buildRevisionPrompt
 } = require('../prompts/engineering');
 
-async function runEngineeringAgent({ issue, repoPath, testCommand, costLimitUsd, onEvent }) {
+async function runEngineeringAgent({
+  issue, repoPath, testCommand, costLimitUsd, onEvent,
+  // New optional context passed through to the prompt so the agent starts
+  // oriented instead of blindly exploring on turn 1.
+  lintCommands,
+  subPackage,
+  contributing,
+  relevantFileHints
+}) {
   return runAgentLoop({
     systemPrompt: SYSTEM_PROMPT,
     userPrompt: buildIssuePrompt({
       issueTitle: issue.title,
       issueBody: issue.body || '',
-      testCommand
+      testCommand,
+      lintCommands,
+      subPackage,
+      contributing,
+      relevantFileHints
     }),
     ctx: { repoPath },
     costLimitUsd,
@@ -19,7 +31,9 @@ async function runEngineeringAgent({ issue, repoPath, testCommand, costLimitUsd,
   });
 }
 
-async function runRevisionPass({ issue, repoPath, testCommand, reviewText, currentDiff, costLimitUsd, onEvent }) {
+async function runRevisionPass({
+  issue, repoPath, testCommand, reviewText, currentDiff, costLimitUsd, onEvent
+}) {
   return runAgentLoop({
     systemPrompt: SYSTEM_PROMPT,
     userPrompt: buildRevisionPrompt({

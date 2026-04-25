@@ -2,7 +2,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { REVIEW_SYSTEM_PROMPT, buildReviewPrompt } = require('../prompts/review');
 const { MODEL } = require('../config');
 
-async function runReviewCopilot({ pr, diff, fileMap }) {
+async function runReviewCopilot({ pr, diff, fileMap, issueTitle, issueBody }) {
   const client = new Anthropic();
   const response = await client.messages.create({
     model: MODEL,
@@ -17,7 +17,9 @@ async function runReviewCopilot({ pr, diff, fileMap }) {
           prTitle: pr.title,
           prBody: pr.body || '',
           diff,
-          fileMap
+          fileMap,
+          issueTitle,
+          issueBody
         })
       }
     ]

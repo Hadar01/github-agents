@@ -1,16 +1,50 @@
 {
   "name": "github-agent",
-  "version": "1.0.0",
+  "version": "0.1.0",
+  "description": "Autonomous GitHub engineering pipeline: takes an issue, ships a PR, and reviews its own diff before opening it.",
   "main": "src/pipeline.js",
+  "bin": {
+    "github-agent": "src/pipeline.js"
+  },
   "scripts": {
     "test": "jest",
     "issue": "node src/pipeline.js issue",
-    "review": "node src/pipeline.js review"
+    "review": "node src/pipeline.js review",
+    "triage": "node src/pipeline.js triage",
+    "smoke": "node -e \"const p = require('./src/pipeline.js'); if (typeof p.buildAuditTrail !== 'function') process.exit(1); console.log('ok');\""
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "Two-agent GitHub engineering system: issue->fix and PR->review",
+  "keywords": [
+    "ai",
+    "agent",
+    "claude",
+    "anthropic",
+    "github",
+    "automation",
+    "code-review",
+    "pull-request",
+    "engineering-agent",
+    "autonomous"
+  ],
+  "author": "Hadar01",
+  "license": "MIT",
+  "homepage": "https://github.com/Hadar01/github-agents#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hadar01/github-agents.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Hadar01/github-agents/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE",
+    "CONTRIBUTING.md",
+    "TESTING.md"
+  ],
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
     "@octokit/rest": "^22.0.1",
@@ -20,5 +54,14 @@
   },
   "devDependencies": {
     "jest": "^30.3.0"
+  },
+  "jest": {
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/repos/"
+    ],
+    "modulePathIgnorePatterns": [
+      "/repos/"
+    ]
   }
 }
