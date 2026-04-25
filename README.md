@@ -140,6 +140,36 @@ Working on a 50-file toy repo is easy. Working on Qiskit, Cirq, or TQEC is not. 
 
 ---
 
+## 🧑‍⚖️ For maintainers wary of AI-generated PR noise
+
+If you maintain a repo and you're (rightly) sceptical about AI tools dumping
+generic *"consider error handling"* comments into your PR threads — read this.
+
+**The `review` subcommand is offline by default.**
+
+```bash
+node src/pipeline.js review https://github.com/your-repo/pull/123
+# → writes review-report.md to disk; never posts anywhere
+# → exits 1 on REQUEST_CHANGES, 2 on NEEDS_DISCUSSION/UNKNOWN
+# → exits 0 only on APPROVE
+```
+
+Posting to the PR requires an explicit `--post` flag. The default workflow is:
+
+1. Run `review` offline on a PR you'd otherwise review by hand.
+2. Read `review-report.md`. Cut anything speculative.
+3. **Manually** decide whether the curated output is worth pasting into the
+   thread. If not, throw it away — nothing was posted, no noise added.
+
+Bug-risk findings must cite `file:line`. The verdict prompt biases toward
+`NEEDS_DISCUSSION` rather than rubber-stamping `APPROVE`. The exit-code-on-
+verdict design makes it CI-gateable as a *"block merge until a human
+acknowledges the bot's concerns"* check, without ever opening a PR comment.
+
+See [`examples/`](examples/) for sample artifacts produced by real runs.
+
+---
+
 ## 🤝 Contributing to repos you don't own
 
 You can run `github-agent` on any public open-source project, even without write access. A `public_repo`-scoped PAT is enough.
