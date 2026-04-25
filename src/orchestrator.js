@@ -94,11 +94,16 @@ async function ensureFork(octokit, upstreamOwner, repo, onEvent = () => {}) {
 }
 
 async function commitAndPush({ repoPath, branch, message, pushOwner, repo, token }) {
-  const git = simpleGit(repoPath);
+  // Use `git -c http.extraheader=...` for auth so the token never appears
+  // in any URL, .git/config entry, or git error message containing the URL.
+  const auth = token ? Buffer.from(`x-access-token:${token}`).toString('base64') : null;
+  const git = simpleGit(auth
+    ? { baseDir: repoPath, config: [`http.extraheader=AUTHORIZATION: Basic ${auth}`] }
+    : { baseDir: repoPath });
   await git.add('.');
   await git.commit(message);
-  const pushUrl = `https://x-access-token:${token}@github.com/${pushOwner}/${repo}.git`;
-  await git.push(pushUrl, branch, ['--set-upstream']);
+  const cleanUrl = `https://github.com/${pushOwner}/${repo}.git`;
+  await git.push(cleanUrl, branch, ['--set-upstream']);
 }
 
 async function openPullRequest({ octokit, owner, repo, headOwner, branch, base, title, body }) {

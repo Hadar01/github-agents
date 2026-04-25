@@ -1,6 +1,5 @@
 module.exports = {
   MODEL: 'claude-sonnet-4-6',
-  MAX_RELEVANT_FILES: 10,
   MAX_REVIEW_FILE_BYTES: 200_000,
 
   MAX_AGENT_ITERATIONS: 18,

@@ -81,7 +81,9 @@ Flags:
   --force-pr            Open the PR even if self-review verdict is REQUEST_CHANGES /
                         NEEDS_DISCUSSION / UNKNOWN, or if tests never passed.
                         Use only when you've inspected the audit trail manually.
-  --web                 Start a live dashboard on http://localhost:3000
+  --web                 Start a live dashboard on http://localhost:3000 (localhost only).
+  --web-bind-all        Bind the dashboard to 0.0.0.0 instead of 127.0.0.1.
+                        Anyone on your LAN can read agent output. Use with care.
   --port=N              Dashboard port (default 3000).
   --max-cost=2.50       Abort the agent loop if cost (USD) exceeds this. Default ${DEFAULT_MAX_USD_PER_RUN}.
   --label=bug           (triage only) Issue label filter.
@@ -94,6 +96,21 @@ Environment (in .env):
 }
 
 // --- shared helpers ---
+
+// Build a simple-git instance whose `git` invocations carry an
+// HTTP `Authorization: Basic ...` header at the COMMAND level (`git -c
+// http.extraheader=...`). The header is never written to .git/config and
+// the token never appears in any URL on disk. Drop-in replacement for the
+// old "bake the token into the clone URL, then strip" pattern.
+function gitWithToken(baseDir, token) {
+  if (!token) return simpleGit(baseDir);
+  const auth = Buffer.from(`x-access-token:${token}`).toString('base64');
+  return simpleGit({
+    baseDir,
+    config: [`http.extraheader=AUTHORIZATION: Basic ${auth}`]
+  });
+}
+
 async function cloneIfMissing(owner, repo, log) {
   const reposDir = path.join(process.cwd(), 'repos');
   const localPath = path.join(reposDir, `${owner}-${repo}`);
@@ -103,14 +120,11 @@ async function cloneIfMissing(owner, repo, log) {
   }
   fs.mkdirSync(reposDir, { recursive: true });
   const cleanUrl = `https://github.com/${owner}/${repo}.git`;
-  const cloneUrl = GITHUB_TOKEN
-    ? `https://x-access-token:${GITHUB_TOKEN}@github.com/${owner}/${repo}.git`
-    : cleanUrl;
   log(info(`Cloning ${owner}/${repo} into ${localPath}`));
-  await simpleGit().clone(cloneUrl, localPath);
-  if (GITHUB_TOKEN) {
-    await simpleGit(localPath).remote(['set-url', 'origin', cleanUrl]);
-  }
+  // Auth flows through `-c http.extraheader=...` set by gitWithToken;
+  // the URL itself stays clean and nothing token-bearing lands in
+  // .git/config or in the remote URL.
+  await gitWithToken(undefined, GITHUB_TOKEN).clone(cleanUrl, localPath);
   return localPath;
 }
 
@@ -380,8 +394,17 @@ async function maybeStartDashboard() {
   const { createDashboard } = require('./web/server');
   const dashboard = createDashboard();
   const port = getOptInt('port', 3000);
-  await dashboard.start(port);
-  console.log(ok(`Dashboard live at http://localhost:${port}`));
+  // Default to 127.0.0.1 — the dashboard streams raw agent output and is not
+  // authenticated. --web-bind-all binds 0.0.0.0 with a loud warning.
+  const bindAll = FLAGS.has('--web-bind-all');
+  const host = bindAll ? '0.0.0.0' : '127.0.0.1';
+  await dashboard.start(port, { host });
+  if (bindAll) {
+    console.log(warn(`Dashboard bound to 0.0.0.0:${port} — reachable from any network interface.`));
+    console.log(warn('Anyone on this LAN/VPN can read every agent thought, command output, and stack trace.'));
+  } else {
+    console.log(ok(`Dashboard live at http://localhost:${port}`));
+  }
   return dashboard;
 }
 

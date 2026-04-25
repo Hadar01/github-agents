@@ -30,13 +30,18 @@ function createDashboard() {
     if (buffer.length > BUFFER_LIMIT) buffer.shift();
     const payload = `data: ${JSON.stringify(stamped)}\n\n`;
     for (const sub of subscribers) {
-      try { sub.write(payload); } catch {}
+      // If a write fails (socket destroyed, client gone), drop the dead
+      // subscriber rather than letting the Set grow unbounded.
+      try { sub.write(payload); } catch { subscribers.delete(sub); }
     }
   }
 
-  function start(port = 3000) {
+  // Default to localhost-only — agent output (thoughts, file paths, command
+  // stdout, occasionally stack traces) is sensitive. Pass host: '0.0.0.0' (or
+  // any external interface) only via the explicit `--web-bind-all` flag.
+  function start(port = 3000, { host = '127.0.0.1' } = {}) {
     return new Promise(resolve => {
-      const server = app.listen(port, () => resolve(server));
+      const server = app.listen(port, host, () => resolve(server));
     });
   }
 
