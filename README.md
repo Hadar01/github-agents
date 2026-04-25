@@ -38,37 +38,6 @@ node src/pipeline.js issue https://github.com/your/repo/issues/42
 ```
 $ node src/pipeline.js issue https://github.com/qiskit/qiskit/issues/9421 --fork --comment
 
-<h3 align="center">An AI that ships pull requests — and reviews its own work before opening them.</h3>
-
-<p align="center">
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-what-makes-this-different">Why github-agent</a> •
-  <a href="#️-architecture">Architecture</a> •
-  <a href="#-safety-guardrails">Safety</a> •
-  <a href="#-roadmap">Roadmap</a>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/model-Claude%20Sonnet-blueviolet?style=flat-square&logo=anthropic" alt="Claude Sonnet">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
-  <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=flat-square&logo=node.js" alt="Node 18+">
-</p>
-
----
-
-`github-agent` is an **autonomous engineering pipeline** built on Claude. Give it a GitHub issue URL; it clones the repo, edits the code, runs the tests, has a **second AI instance review the diff**, and opens a pull request — all in one command.
-
-```bash
-node src/pipeline.js issue https://github.com/your/repo/issues/42
-```
-
----
-
-## ✨ See it in action
-
-```
-$ node src/pipeline.js issue https://github.com/your/repo/issues/42
-
    ╔════════════════════════════════════════════╗
    ║   github-agent — autonomous PR engineer    ║
    ║   engineering → self-review → ship         ║
@@ -100,15 +69,6 @@ $ node src/pipeline.js issue https://github.com/your/repo/issues/42
   🔧 run_lint(mypy .)         → PASS
   🔧 finish({"pr_summary":"Preserve global_phase through IfElseOp consolidation..."})
   ✓ Agent finished after 6 turn(s)
-  💭 [turn 1] Let me start by exploring the auth module.
-  🔧 list_files(src/auth)
-  🔧 read_file(src/auth/login.js)
-  💭 [turn 2] The issue is at line 47 — email isn't lowercased before lookup.
-  🔧 apply_patch(src/auth/login.js, ...)
-  🔧 run_tests(npm test)
-     → ok
-  🔧 finish({"pr_summary":"Lowercase email before lookup..."})
-  ✓ Agent finished after 4 turn(s)
 
 ▸ Self-review — auditing the diff
   ✓ Review verdict: APPROVE
@@ -131,7 +91,6 @@ Token usage (engineering + revision)
 ## 🏆 What makes this different
 
 Most AI coding tools **generate code and hand it to a human.** `github-agent` **ships it** — and audits itself first, refuses to ship bad work, and handles OSS repos you don't own.
-Most AI coding tools **generate code and hand it to a human.** `github-agent` **ships it** — and audits itself first.
 
 |  | Copilot / Cursor | Devin / SWE-agent | **github-agent** |
 |---|:---:|:---:|:---:|
@@ -146,15 +105,12 @@ Most AI coding tools **generate code and hand it to a human.** `github-agent` **
 | Works on repos you don't own (fork + PR) | ❌ | ❌ | ✅ |
 | Human-readable audit trail in PR body | ❌ | partial | ✅ |
 | Cost estimate + kill switch per run | ❌ | ❌ | ✅ |
-| Full audit trail in the PR body | ❌ | partial | ✅ |
-| Cost estimate per run | ❌ | ❌ | ✅ |
 
 ### The self-review loop — the killer feature
 
 A **second Claude instance**, with a completely fresh context and a different system prompt, audits the diff for:
 
 - 🐛 **Bug risk** — logic errors, off-by-ones, null dereferences, drift from the original issue intent
-- 🐛 **Bug risk** — logic errors, off-by-ones, null dereferences
 - 🔲 **Edge cases** — inputs the engineering agent didn't consider
 - 🧪 **Test coverage** — is the change actually tested?
 - 🎯 **Scope creep** — did the agent touch things it shouldn't?
@@ -201,7 +157,6 @@ node src/pipeline.js triage https://github.com/qiskit/qiskit --label=bug --max=5
 ```
 
 The review subcommand **exits non-zero** on `REQUEST_CHANGES` so you can wire it straight into CI as a pre-merge gate.
-If the verdict is `REQUEST_CHANGES`, the engineering agent does a **revision pass** with the review feedback as input. The full report ships in the PR body — no black box, no guessing what the AI did.
 
 ---
 
@@ -212,7 +167,6 @@ If the verdict is `REQUEST_CHANGES`, the engineering agent does a **revision pas
 - Node.js 18+
 - An [Anthropic API key](https://console.anthropic.com/)
 - A [GitHub Personal Access Token](https://github.com/settings/tokens) — `public_repo` for OSS work, `repo` for private repos
-- A [GitHub Personal Access Token](https://github.com/settings/tokens) with `repo` scope
 
 ### Installation
 
@@ -236,37 +190,38 @@ node src/pipeline.js issue https://github.com/your/repo/issues/42 --dry-run
 node src/pipeline.js issue https://github.com/your/repo/issues/42
 
 # Review an existing PR (no editing — just the audit)
-git clone <your-fork-url>
-cd github-agent
-npm install
-```
-
-Create a `.env` file in the repo root:
-
-```ini
-ANTHROPIC_API_KEY=sk-ant-...
-GITHUB_TOKEN=ghp_...
-```
-
-### Usage
-
-```bash
-# Fix an issue and open a PR (the main event)
-node src/pipeline.js issue https://github.com/your/repo/issues/42
-
-# Dry run — full pipeline, no commits/push/PR
-node src/pipeline.js issue https://github.com/your/repo/issues/42 --dry-run
-
-# Audit an existing PR (no editing — just the review report)
 node src/pipeline.js review https://github.com/your/repo/pull/123
 ```
 
 Or use the npm shorthand scripts:
 
 ```bash
-npm run issue -- https://github.com/your/repo/issues/42
+npm run issue  -- https://github.com/your/repo/issues/42
 npm run review -- https://github.com/your/repo/pull/123
 ```
+
+---
+
+## 📖 Commands & flags
+
+```
+node src/pipeline.js issue  <issue-url>   [flags]
+node src/pipeline.js review <pr-url>      [flags]
+node src/pipeline.js triage <repo-url>    [flags]
+```
+
+| Flag | Subcommand | Effect |
+|---|---|---|
+| `--dry-run` | `issue`, `triage` | Full pipeline — skip commit/push/PR. |
+| `--fork` | `issue`, `triage` | Push to your fork; open PR from fork to upstream. |
+| `--comment` | `issue`, `triage` | Post a link-back comment on the original issue after PR opens. |
+| `--post` | `review` | Submit review as a PR review comment (or issue comment fallback). |
+| `--force-pr` | `issue`, `triage` | Override PR safety gate. Ship on `REQUEST_CHANGES` / no passing tests. |
+| `--web` | any | Start a **live dashboard** at `http://localhost:3000`. |
+| `--port=N` | any | Dashboard port (default `3000`). |
+| `--max-cost=2.50` | any | Hard-abort agent if run cost (USD) exceeds this. Default `$5.00`. |
+| `--label=bug` | `triage` | Only process issues with this label. |
+| `--max=5` | `triage` | Cap batch size. |
 
 ---
 
@@ -278,76 +233,144 @@ npm run review -- https://github.com/your/repo/pull/123
 └────────┬────────┘
          │
          ▼
-┌─────────────────────────────────────────────────────┐
-│  Engineering Agent  (Claude + tool use)             │
-│                                                     │
-│  Tools:  read_file   list_files   write_file        │
-│          apply_patch  run_tests   git_diff          │
-│          git_status   finish                        │
-│                                                     │
-│  Loop:   explore → patch → test → repeat            │
-└────────────────────┬────────────────────────────────┘
-                     │  diff
-                     ▼
-┌─────────────────────────────────────────────────────┐
-│  Self-Review  (Claude, fresh context)               │
-│                                                     │
-│  Audits:  bug risk · edge cases                     │
-│           test coverage · scope creep               │
-│                                                     │
-│  Verdict:  APPROVE / REQUEST_CHANGES / DISCUSS      │
-└─────────────┬───────────────────────────────────────┘
-              │
-       ┌──────┴────────────────────┐
-       │ APPROVE                   │ REQUEST_CHANGES
-       │                           ▼
-       │               ┌───────────────────────┐
-       │               │  Revision Pass        │
-       │               │  (engineering agent   │
-       │               │   + review feedback)  │
-       │               └──────────┬────────────┘
-       │                          │
-       ▼                          ▼
-┌────────────────────────────────────┐
-│  Commit → Push → Open PR           │
-│  (PR body includes review report)  │
-└────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│  Project discovery  (zero-cost, local)                    │
+│    · detect test command (make/tox/nox/pytest/npm/...)    │
+│    · detect linters (ruff/black/mypy/eslint/...)          │
+│    · detect monorepo sub-packages + guess target          │
+│    · read CONTRIBUTING.md, PR template, DCO requirement   │
+│    · prefilter top-20 relevant files by keyword score     │
+│    · check for duplicate open PR                          │
+└────────┬──────────────────────────────────────────────────┘
+         │
+         ▼
+┌───────────────────────────────────────────────────────────┐
+│  Engineering Agent  (Claude + tool use, cost-capped)      │
+│                                                           │
+│  Tools:  read_file    list_files    find_relevant_files   │
+│          write_file   apply_patch   apply_patch_range     │
+│          run_tests    run_lint      git_diff              │
+│          git_status   finish        give_up               │
+│                                                           │
+│  Loop:   explore → patch → test → lint → repeat           │
+└────────┬──────────────────────────────────────────────────┘
+         │  diff
+         ▼
+┌───────────────────────────────────────────────────────────┐
+│  Self-Review  (Claude, fresh context + issue text)        │
+│                                                           │
+│  Audits:  bug risk · edge cases                           │
+│           test coverage · scope creep                     │
+│           drift from original issue intent                │
+│                                                           │
+│  Verdict: APPROVE / REQUEST_CHANGES / NEEDS_DISCUSSION    │
+└────────┬──────────────────────────────────────────────────┘
+         │
+   ┌─────┴─────────────────────────┐
+   │ APPROVE                       │ REQUEST_CHANGES
+   │                               ▼
+   │                  ┌───────────────────────┐
+   │                  │  Revision Pass        │
+   │                  │  (engineering agent   │
+   │                  │   + review feedback)  │
+   │                  └──────────┬────────────┘
+   │                             │
+   ▼                             ▼
+┌───────────────────────────────────────────────────────────┐
+│  Safety gate: require passing tests + clean verdict       │
+│  On pass → commit (with DCO) → push (fork or upstream)    │
+│          → open PR (honors PR template)                   │
+│          → optional: comment on source issue              │
+│  On fail → audit-trail.md written, PR blocked             │
+└───────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 🛡️ Safety guardrails
 
-The agent has real write access to files on disk. We've put real fences around it:
+The agent has real write access to files on disk, real API tokens, and real cost. We've put real fences around it:
 
 | Guardrail | Detail |
 |---|---|
-| **Path traversal blocked** | `read_file`, `write_file`, `apply_patch` reject any path escaping the repo root |
-| **Test command allowlist** | `run_tests` only accepts `npm test`, `pytest`, `go test`, `cargo test`, etc. — no arbitrary shell |
+| **Path traversal blocked** | `read_file`, `write_file`, `apply_patch*` reject any path escaping the repo root |
+| **No shell interpretation** | `run_tests` / `run_lint` tokenize the command, reject shell metacharacters (`;`, `&&`, backticks, `$(…)`), and spawn with `shell: false` |
+| **PR gate on bad self-review** | `REQUEST_CHANGES`, `NEEDS_DISCUSSION`, unparseable verdict, or no passing tests → PR is **blocked**. `--force-pr` to override |
+| **Review exits non-zero for CI** | `pipeline.js review` exits `1` on `REQUEST_CHANGES`, `2` on `NEEDS_DISCUSSION`/`UNKNOWN` |
 | **Iteration cap** | Hard stop at 18 agent turns per pass |
 | **Cost kill-switch** | Configurable per-run USD ceiling (default $5.00) — aborts before overspending |
-| **Token leak prevention** | GitHub PAT is used for clone + push but never written to `.git/config` |
-| **Patch uniqueness** | `apply_patch` requires the target string to be unique in the file — no accidental multi-site rewrites |
+| **Token leak prevention** | GitHub PAT used for clone + push but never written to `.git/config` (remote URL stripped after clone) |
+| **Patch uniqueness** | `apply_patch` requires a unique match; fallback to whitespace-normalized match; errors include closest-line hints |
+| **No accidental file wipes** | `write_file` refuses to overwrite an existing file unless `overwrite:true` is explicitly passed |
+| **Pre-fix HEAD in audit** | Every run records the starting SHA with a ready-to-paste `git reset --hard <sha>` revert |
+| **Flaky-test tolerance** | `run_tests` retries 3× on failure; passes on retry are flagged `flaky:true`, not treated as clean |
+| **Graceful give-up** | Agent can abort with `give_up({reason, explanation, blockers})` — no half-fixes shipped |
+| **API retries** | Anthropic calls retry with exponential backoff on 429/529/network errors |
 | **`--dry-run` mode** | Full pipeline simulation without committing, pushing, or opening anything |
 
 ---
 
 ## 💰 Cost transparency
 
-Every run prints a token breakdown and a USD estimate. The audit trail records the same numbers in the PR body.
+Every run prints a token breakdown and a USD estimate. The same numbers land in the audit trail and the PR body.
 
-**Typical cost per issue:** $0.20 – $1.50, depending on repo size and whether the self-review triggers a revision pass.
+**Typical cost per issue:** $0.20 – $1.50, depending on repo size and whether the self-review triggers a revision pass. Bigger repos (Qiskit-scale) trend toward the upper end.
 
 ```
 Token usage (engineering + revision)
-  input:      12,403 tok   @  $3.00 / MTok
-  output:      1,847 tok   @ $15.00 / MTok
-  cache read:  8,912 tok   @  $0.30 / MTok
-  ─────────────────────────────────────
-  estimated cost:  $0.0676
+  input:        18,204 tok · output:    2,131 tok
+  cache_read:   14,067 tok · cache_create:    0 tok
+  ───────────────────────────────────────────────
+  cost: $0.4912  (in $0.2731 + out $0.1598 + cache_r $0.0211 + cache_c $0.0000)
 ```
 
-> Rates are read from `src/config.js` (`COST_INPUT_PER_MTOK`, `COST_OUTPUT_PER_MTOK`, `COST_CACHE_READ_PER_MTOK`). Update them there if Anthropic's pricing changes.
+> Rates live in `src/config.js` (`COST_INPUT_PER_MTOK`, `COST_OUTPUT_PER_MTOK`, `COST_CACHE_READ_PER_MTOK`, `COST_CACHE_CREATION_PER_MTOK`). Update them if Anthropic pricing changes.
+
+---
+
+## 📋 Audit trail
+
+Every run writes `audit-trail.md` (gitignored). Designed to be skimmable by a human reviewer in under a minute:
+
+```
+# Audit trail — issue #9421: Transpiler drops global phase on conditional gates
+
+**Issue:**        https://github.com/qiskit/qiskit/issues/9421
+**Branch:**       fix/issue-9421
+**Pre-fix HEAD:** 3f4a1b2 — revert with git reset --hard 3f4a1b2
+**Turns used:**   6 of 18
+**Cost:**         $0.4912
+
+## Outcome
+✅ Finished — in single pass
+Preserve global_phase through IfElseOp consolidation...
+
+## Safety gates
+- Self-review verdict: APPROVE
+- Tests observed passing: YES
+- Lint observed passing: YES
+
+## Files touched
+- qiskit/transpiler/passes/optimization/consolidate_blocks.py — 1 edit via apply_patch
+
+## Test runs
+- Total invocations: 1 · Passed: 1 · Failed: 0
+
+## Timeline (condensed)
+- Turn 1 — Scoring the shortlist…
+  - ranked files for: "transpiler global phase conditional gates"
+  - read qiskit/transpiler/passes/optimization/consolidate_blocks.py
+- Turn 2 — Found it — line 142 drops .global_phase…
+  - patched qiskit/transpiler/passes/optimization/consolidate_blocks.py
+- Turn 3 — ran tests: tox → PASS; ran lint: ruff check . → PASS; ran lint: mypy . → PASS
+- Turn 4 — signalled finish
+
+## Self-review report
+[full reviewer output]
+
+## Full tool transcript
+<details>…raw trace for debugging…</details>
+```
 
 ---
 
