@@ -1,310 +1,440 @@
-# github-agent
+<h1 align="center">
+  <br>
+  🤖 github-agent
+  <br>
+</h1>
 
-> An AI that ships PRs — **and reviews its own work before opening them.**
+<h3 align="center">An AI that ships pull requests — and reviews its own work before opening them.</h3>
 
-`github-agent` is an autonomous engineering pipeline built on Claude Opus. Give it a GitHub issue URL; it clones the repo, edits files, runs tests, audits its own diff with a second Claude instance, and opens a pull request — all in one command.
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-what-makes-this-different">Why github-agent</a> •
+  <a href="#-built-for-big-open-source-projects">Big Projects</a> •
+  <a href="#️-architecture">Architecture</a> •
+  <a href="#️-safety-guardrails">Safety</a> •
+  <a href="#️-roadmap">Roadmap</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/model-Claude%20Sonnet%204.6-blueviolet?style=flat-square&logo=anthropic" alt="Claude Sonnet 4.6">
+  <img src="https://img.shields.io/badge/tests-127%20passing-brightgreen?style=flat-square" alt="127 tests passing">
+  <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=flat-square&logo=node.js" alt="Node 18+">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
+  <img src="https://img.shields.io/badge/CI-Linux%20%7C%20macOS%20%7C%20Windows-555?style=flat-square&logo=githubactions" alt="CI matrix">
+</p>
+
+---
+
+`github-agent` is an **autonomous engineering pipeline** built on Claude. Give it a GitHub issue URL; it clones the repo, edits the code, runs the tests, **has a second AI instance review the diff**, refuses to ship a PR that fails its own review, and opens a pull request — all in one command.
 
 ```bash
-$ node src/pipeline.js issue https://github.com/your/repo/issues/42
+node src/pipeline.js issue https://github.com/your/repo/issues/42
+```
+
+---
+
+## ✨ See it in action
+
+```
+$ node src/pipeline.js issue https://github.com/qiskit/qiskit/issues/9421 --fork --comment
 
    ╔════════════════════════════════════════════╗
    ║   github-agent — autonomous PR engineer    ║
    ║   engineering → self-review → ship         ║
    ╚════════════════════════════════════════════╝
 
-▸ Issue your/repo#42
-  title: Login fails when email contains uppercase
+▸ Issue qiskit/qiskit#9421
+  title: Transpiler drops global phase on conditional gates
   default branch: main
 
 ▸ Cloning + branching
-  ✓ branch: fix/issue-42
-  test command: npm test
+  ✓ branch: fix/issue-9421
+  test command: tox
+  lint commands: ruff check ., black --check ., mypy .
+  monorepo sub-packages: terra, aer, ibmq
+  guessed sub-package for issue: terra
+  CONTRIBUTING.md found at CONTRIBUTING.md
+  Project requires DCO Signed-off-by — will auto-sign commits.
+  20 file(s) prefiltered as likely relevant
+  pre-fix HEAD: 3f4a1b2
 
 ▸ Engineering agent — autonomous fix loop
-  💭 [turn 1] Let me start by exploring the auth module.
-  🔧 list_files(src/auth)
-  🔧 read_file(src/auth/login.js)
-  💭 [turn 2] The issue is at line 47 — email isn't lowercased before lookup.
-  🔧 apply_patch(src/auth/login.js, ...)
-  🔧 run_tests(npm test)
-     → ok
-  🔧 finish({"pr_summary":"Lowercase email at..."})
-  ✓ Agent finished after 4 turn(s)
+  💭 [turn 1] Scoring the shortlist — transpiler/passes/optimization looks like the hit.
+  🔧 find_relevant_files(query="transpiler global phase conditional gates")
+  🔧 read_file(qiskit/transpiler/passes/optimization/consolidate_blocks.py)
+  💭 [turn 2] Found it — line 142 drops .global_phase on IfElseOp. Patching.
+  🔧 apply_patch(qiskit/transpiler/passes/optimization/consolidate_blocks.py, ...)
+  🔧 run_tests(tox)      → PASS
+  🔧 run_lint(ruff check .)   → PASS
+  🔧 run_lint(mypy .)         → PASS
+  🔧 finish({"pr_summary":"Preserve global_phase through IfElseOp consolidation..."})
+  ✓ Agent finished after 6 turn(s)
 
 ▸ Self-review — auditing the diff
   ✓ Review verdict: APPROVE
 
 Token usage (engineering + revision)
-  input: 12,403 tok · output: 1,847 tok · cache_read: 8,912 tok
-  cost: $0.3284
+  input: 18,204 tok · output: 2,131 tok · cache_read: 14,067 tok
+  cost: $0.4912
 
 ▸ Committing + pushing
-  ✓ pushed fix/issue-42 to your/repo
+  ✓ added DCO Signed-off-by trailer
+  ✓ pushed fix/issue-9421 to Hadar01/qiskit
 
 ▸ Opening pull request
-  ✓ PR opened: https://github.com/your/repo/pull/431
+  ✓ PR opened: https://github.com/qiskit/qiskit/pull/11504
+  ✓ commented on issue: https://github.com/qiskit/qiskit/issues/9421#issuecomment-...
 ```
 
-## What makes this different
+---
 
-Most AI coding tools generate code and hand it to a human. `github-agent` ships it.
+## 🏆 What makes this different
 
-| | Copilot / Cursor | Devin / SWE-agent | **github-agent** |
-|---|---|---|---|
+Most AI coding tools **generate code and hand it to a human.** `github-agent` **ships it** — and audits itself first, refuses to ship bad work, and handles OSS repos you don't own.
+
+|  | Copilot / Cursor | Devin / SWE-agent | **github-agent** |
+|---|:---:|:---:|:---:|
 | Generates code | ✅ | ✅ | ✅ |
 | Runs tests autonomously | ❌ | ✅ | ✅ |
-| Opens the PR | ❌ | ✅ | ✅ |
+| Runs project linters autonomously | ❌ | partial | ✅ |
+| Opens the PR for you | ❌ | ✅ | ✅ |
 | **Reviews its own diff before shipping** | ❌ | ❌ | ✅ |
+| **Refuses to ship on bad self-review** | ❌ | ❌ | ✅ |
 | **Revises based on its own review** | ❌ | ❌ | ✅ |
-| Ships an audit trail you can defend | ❌ | partial | ✅ |
+| Knows when to give up | ❌ | ❌ | ✅ |
+| Works on repos you don't own (fork + PR) | ❌ | ❌ | ✅ |
+| Human-readable audit trail in PR body | ❌ | partial | ✅ |
+| Cost estimate + kill switch per run | ❌ | ❌ | ✅ |
 
-The killer feature is the **self-review loop**: a second Claude instance, with a different system prompt and zero context from the engineering pass, audits the diff for bug risk, edge cases, test coverage, and scope creep. If the verdict is `REQUEST_CHANGES`, the engineering agent does a revision pass with the review feedback as input. The full report ships in the PR body — no black box.
+### The self-review loop — the killer feature
 
-## Architecture
+A **second Claude instance**, with a completely fresh context and a different system prompt, audits the diff for:
 
+- 🐛 **Bug risk** — logic errors, off-by-ones, null dereferences, drift from the original issue intent
+- 🔲 **Edge cases** — inputs the engineering agent didn't consider
+- 🧪 **Test coverage** — is the change actually tested?
+- 🎯 **Scope creep** — did the agent touch things it shouldn't?
+
+Verdict is one of `APPROVE` / `REQUEST_CHANGES` / `NEEDS_DISCUSSION`. On `REQUEST_CHANGES` the engineering agent does a **revision pass** with the review as input. On anything that isn't `APPROVE`, **the pipeline refuses to open the PR** — you have to pass `--force-pr` to override. No silent bad PRs.
+
+---
+
+## 🔬 Built for big open-source projects
+
+Working on a 50-file toy repo is easy. Working on Qiskit, Cirq, or TQEC is not. `github-agent` has specific affordances for large scientific-Python-class codebases:
+
+| Problem on a Qiskit-scale repo | What github-agent does |
+|---|---|
+| Thousands of files — context blows up | **Keyword relevance prefilter** scores every file against issue text; top-20 injected as starting hint. No embeddings API needed. |
+| Narrow language support misses `.pyx`/`.pxd`/`.pyi`/`.rst`/config | Walks all of them, plus `Makefile`, `tox.ini`, `noxfile.py`, `CONTRIBUTING.md`, PR templates. |
+| Monorepos with sub-packages (`qiskit-terra`, `qiskit-aer`, …) | **Auto-detects sub-packages**, guesses from issue text which one the change belongs to, tells the agent. |
+| Test command isn't bare `pytest` — it's `tox`, `nox`, `make test` | Priority-ordered detection: Makefile `test:` target → `make test`. `tox.ini` → `tox`. `noxfile.py` → `nox`. Then Python/Node/Rust. |
+| CI gates on `ruff`, `black`, `mypy` — not just tests | **Lint gate**: auto-detects configured linters and the agent must pass them all before `finish()`. |
+| Deeply-indented Python makes `apply_patch` brittle | **Whitespace-normalized fallback** + `apply_patch_range` (replace by line numbers) when strings won't disambiguate. |
+| DCO sign-off / PR templates / CONTRIBUTING.md rules | All read and honored. `Signed-off-by:` trailer appended automatically. PR template preserved at top of PR body. |
+| Scientific deps fail to install (BLAS/CUDA/compiled extensions) | `run_tests` detects `ModuleNotFoundError`/`ImportError` and flags `env_error:true`. The agent **gives up gracefully** instead of thrashing. |
+| Complex issues need human judgment | The agent can call `give_up({reason, explanation, blockers})`. With `--comment` it posts the reason on the issue so a human picks up with full context. |
+| Duplicate runs open duplicate PRs | **Duplicate-PR guard** — scans open PRs for `Resolves/Fixes/Closes #N` or matching `fix/issue-N` branch before cloning. |
+
+> 🛑 **Honest limitation:** we don't provision test environments. If a repo needs GPU / BLAS / conda, you'll want to run the agent inside a pre-warmed Docker image. That executor is on the roadmap.
+
+---
+
+## 🤝 Contributing to repos you don't own
+
+You can run `github-agent` on any public open-source project, even without write access. A `public_repo`-scoped PAT is enough.
+
+```bash
+# Fork-and-PR: pushes to your own fork, opens PR upstream, links back to the issue.
+node src/pipeline.js issue https://github.com/qiskit/qiskit/issues/9421 --fork --comment
+
+# Review a PR in a project you're not a maintainer of.
+# --post submits the review as a PR comment (falls back to issue comment if permissions block).
+node src/pipeline.js review https://github.com/qiskit/qiskit/pull/11504 --post
+
+# Triage multiple issues in one shot.
+node src/pipeline.js triage https://github.com/qiskit/qiskit --label=bug --max=5 --fork --comment
 ```
-┌─────────────────┐
-│ GitHub issue    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────┐
-│ Engineering Agent (Claude Opus + tool use)          │
-│   Tools: read_file, list_files, write_file,         │
-│          apply_patch, run_tests, git_diff,          │
-│          git_status, finish                         │
-│   Loop: explore → patch → test → repeat             │
-└────────┬────────────────────────────────────────────┘
-         │  diff
-         ▼
-┌─────────────────────────────────────────────────────┐
-│ Self-Review (Claude Opus, fresh context)            │
-│   Audits: bug risk, edge cases, test coverage,      │
-│           scope creep                               │
-│   Verdict: APPROVE / REQUEST_CHANGES / DISCUSS      │
-└────────┬────────────────────────────────────────────┘
-         │
-    ┌────┴─────┐
-    │          │ REQUEST_CHANGES
-    │APPROVE   ▼
-    │     ┌────────────────────┐
-    │     │ Revision pass      │
-    │     │ (engineering agent │
-    │     │  with review as    │
-    │     │  feedback)         │
-    │     └────┬───────────────┘
-    │          │
-    ▼          ▼
-┌─────────────────────┐
-│ Commit + push + PR  │  ← PR body includes self-review report
-└─────────────────────┘
-```
 
-## Quick start
+The review subcommand **exits non-zero** on `REQUEST_CHANGES` so you can wire it straight into CI as a pre-merge gate.
+
+---
+
+## 🚀 Quick start
+
+### Prerequisites
+
+- Node.js 18+
+- An [Anthropic API key](https://console.anthropic.com/)
+- A [GitHub Personal Access Token](https://github.com/settings/tokens) — `public_repo` for OSS work, `repo` for private repos
+
+### Installation
 
 ```bash
 git clone https://github.com/Hadar01/github-agents.git
 cd github-agents
 npm install
-
 cp .env.example .env
-# fill in:
+# edit .env:
 #   ANTHROPIC_API_KEY=sk-ant-...
-#   GITHUB_TOKEN=ghp_...   (scope: public_repo for OSS, repo for private)
+#   GITHUB_TOKEN=ghp_...
+```
 
-# Try it (dry run — no commits, no PR)
+### Your first run
+
+```bash
+# Dry run first — full pipeline, no commits/push/PR
 node src/pipeline.js issue https://github.com/your/repo/issues/42 --dry-run
 
-# Actually ship a PR
+# Ship it for real
 node src/pipeline.js issue https://github.com/your/repo/issues/42
 
-# Review an existing PR (no autonomous editing — just the audit)
+# Review an existing PR (no editing — just the audit)
 node src/pipeline.js review https://github.com/your/repo/pull/123
 ```
 
-## Contributing to repos you don't own
-
-You can run the agent on any public repo, even without write access:
+Or use the npm shorthand scripts:
 
 ```bash
-# Fork-and-PR: pushes to your fork, opens PR from fork to upstream,
-# and leaves a comment on the original issue pointing at your PR.
-node src/pipeline.js issue https://github.com/some/project/issues/99 \
-  --fork --comment
-
-# Review a PR in a project you're not a maintainer of.
-# --post submits the review as a PR review comment (falls back to an
-# issue-style comment if your token can't submit a formal review).
-node src/pipeline.js review https://github.com/some/project/pull/42 --post
+npm run issue  -- https://github.com/your/repo/issues/42
+npm run review -- https://github.com/your/repo/pull/123
 ```
 
-Both flags work with a `public_repo` scoped PAT — no `repo` scope required.
+---
 
-## Flags
+## 📖 Commands & flags
 
-| Flag | Effect |
+```
+node src/pipeline.js issue  <issue-url>   [flags]
+node src/pipeline.js review <pr-url>      [flags]
+node src/pipeline.js triage <repo-url>    [flags]
+```
+
+| Flag | Subcommand | Effect |
+|---|---|---|
+| `--dry-run` | `issue`, `triage` | Full pipeline — skip commit/push/PR. |
+| `--fork` | `issue`, `triage` | Push to your fork; open PR from fork to upstream. |
+| `--comment` | `issue`, `triage` | Post a link-back comment on the original issue after PR opens. |
+| `--post` | `review` | Submit review as a PR review comment (or issue comment fallback). |
+| `--force-pr` | `issue`, `triage` | Override PR safety gate. Ship on `REQUEST_CHANGES` / no passing tests. |
+| `--web` | any | Start a **live dashboard** at `http://localhost:3000`. |
+| `--port=N` | any | Dashboard port (default `3000`). |
+| `--max-cost=2.50` | any | Hard-abort agent if run cost (USD) exceeds this. Default `$5.00`. |
+| `--label=bug` | `triage` | Only process issues with this label. |
+| `--max=5` | `triage` | Cap batch size. |
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐
+│  GitHub Issue   │
+└────────┬────────┘
+         │
+         ▼
+┌───────────────────────────────────────────────────────────┐
+│  Project discovery  (zero-cost, local)                    │
+│    · detect test command (make/tox/nox/pytest/npm/...)    │
+│    · detect linters (ruff/black/mypy/eslint/...)          │
+│    · detect monorepo sub-packages + guess target          │
+│    · read CONTRIBUTING.md, PR template, DCO requirement   │
+│    · prefilter top-20 relevant files by keyword score     │
+│    · check for duplicate open PR                          │
+└────────┬──────────────────────────────────────────────────┘
+         │
+         ▼
+┌───────────────────────────────────────────────────────────┐
+│  Engineering Agent  (Claude + tool use, cost-capped)      │
+│                                                           │
+│  Tools:  read_file    list_files    find_relevant_files   │
+│          write_file   apply_patch   apply_patch_range     │
+│          run_tests    run_lint      git_diff              │
+│          git_status   finish        give_up               │
+│                                                           │
+│  Loop:   explore → patch → test → lint → repeat           │
+└────────┬──────────────────────────────────────────────────┘
+         │  diff
+         ▼
+┌───────────────────────────────────────────────────────────┐
+│  Self-Review  (Claude, fresh context + issue text)        │
+│                                                           │
+│  Audits:  bug risk · edge cases                           │
+│           test coverage · scope creep                     │
+│           drift from original issue intent                │
+│                                                           │
+│  Verdict: APPROVE / REQUEST_CHANGES / NEEDS_DISCUSSION    │
+└────────┬──────────────────────────────────────────────────┘
+         │
+   ┌─────┴─────────────────────────┐
+   │ APPROVE                       │ REQUEST_CHANGES
+   │                               ▼
+   │                  ┌───────────────────────┐
+   │                  │  Revision Pass        │
+   │                  │  (engineering agent   │
+   │                  │   + review feedback)  │
+   │                  └──────────┬────────────┘
+   │                             │
+   ▼                             ▼
+┌───────────────────────────────────────────────────────────┐
+│  Safety gate: require passing tests + clean verdict       │
+│  On pass → commit (with DCO) → push (fork or upstream)    │
+│          → open PR (honors PR template)                   │
+│          → optional: comment on source issue              │
+│  On fail → audit-trail.md written, PR blocked             │
+└───────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🛡️ Safety guardrails
+
+The agent has real write access to files on disk, real API tokens, and real cost. We've put real fences around it:
+
+| Guardrail | Detail |
 |---|---|
-| `--dry-run` | Run engineering + self-review locally; skip commit/push/PR. |
-| `--fork` | Push to your own fork; open PR from fork to upstream. |
-| `--comment` | After opening a PR, post a comment on the original issue linking to it. |
-| `--post` | (review only) Submit the review as a PR review comment — no write access needed. |
-| `--force-pr` | Open a PR even if self-review verdict is REQUEST_CHANGES or tests never passed. Use sparingly. |
-| `--web` | Start a live event dashboard on `http://localhost:3000`. |
-| `--port=N` | Dashboard port. |
-| `--max-cost=2.50` | Abort the agent if cost (USD) exceeds this. |
-| `--label=bug` `--max=5` | (triage only) Filter issues by label and cap batch size. |
+| **Path traversal blocked** | `read_file`, `write_file`, `apply_patch*` reject any path escaping the repo root |
+| **No shell interpretation** | `run_tests` / `run_lint` tokenize the command, reject shell metacharacters (`;`, `&&`, backticks, `$(…)`), and spawn with `shell: false` |
+| **PR gate on bad self-review** | `REQUEST_CHANGES`, `NEEDS_DISCUSSION`, unparseable verdict, or no passing tests → PR is **blocked**. `--force-pr` to override |
+| **Review exits non-zero for CI** | `pipeline.js review` exits `1` on `REQUEST_CHANGES`, `2` on `NEEDS_DISCUSSION`/`UNKNOWN` |
+| **Iteration cap** | Hard stop at 18 agent turns per pass |
+| **Cost kill-switch** | Configurable per-run USD ceiling (default $5.00) — aborts before overspending |
+| **Token leak prevention** | GitHub PAT used for clone + push but never written to `.git/config` (remote URL stripped after clone) |
+| **Patch uniqueness** | `apply_patch` requires a unique match; fallback to whitespace-normalized match; errors include closest-line hints |
+| **No accidental file wipes** | `write_file` refuses to overwrite an existing file unless `overwrite:true` is explicitly passed |
+| **Pre-fix HEAD in audit** | Every run records the starting SHA with a ready-to-paste `git reset --hard <sha>` revert |
+| **Flaky-test tolerance** | `run_tests` retries 3× on failure; passes on retry are flagged `flaky:true`, not treated as clean |
+| **Graceful give-up** | Agent can abort with `give_up({reason, explanation, blockers})` — no half-fixes shipped |
+| **API retries** | Anthropic calls retry with exponential backoff on 429/529/network errors |
+| **`--dry-run` mode** | Full pipeline simulation without committing, pushing, or opening anything |
 
-## Audit trail
+---
 
-Every run writes `audit-trail.md` in the repo root (gitignored). Sections:
+## 💰 Cost transparency
 
-1. **Header** — issue URL, branch, pre-fix HEAD (with ready-to-paste revert),
-   total turns, total cost.
-2. **Outcome** — one-line ✅ Finished / ❌ Gave up / ⚠ Did not finish, with
-   the final PR summary or give-up explanation.
-3. **Safety gates** — verdict, `tests observed passing`, `lint observed
-   passing`.
-4. **Files touched** — each edited path with the number of edits and which
-   tool made them.
-5. **Test runs** — total / passed / flaky / failed / env-errors.
-6. **Timeline (condensed)** — one bullet per turn: thought + tool summary.
-7. **Self-review report** — full reviewer output.
-8. **Full tool transcript** — collapsed `<details>` for debugging.
+Every run prints a token breakdown and a USD estimate. The same numbers land in the audit trail and the PR body.
 
-Designed to be skimmable by a reviewer in under a minute.
-
-## Safety guardrails
-
-The agent has real write access to the repo on disk. We've put real fences around it:
-
-- **Path traversal blocked.** `read_file`, `write_file`, `apply_patch` reject any path that escapes the repo root.
-- **No shell interpretation in `run_tests`.** Commands are tokenized, matched against a structured allowlist, rejected if they contain any shell metacharacter (`;`, `&&`, backticks, `$()`, …), then spawned with `shell: false`.
-- **PR won't open on a bad self-review.** If the review verdict is `REQUEST_CHANGES`, `NEEDS_DISCUSSION`, or unparseable, the PR is blocked. Same if the agent never observed a passing `run_tests` call. Override with `--force-pr` only after reading the audit trail.
-- **Non-zero exit codes on review failure.** `node src/pipeline.js review ...` exits `1` on `REQUEST_CHANGES` and `2` on `NEEDS_DISCUSSION`/`UNKNOWN` so CI can gate on the verdict.
-- **Iteration cap.** The agent has 18 turns max. Beyond that the loop hard-stops.
-- **Cost ceiling kill switch.** Hard-abort the agent if cumulative spend crosses `--max-cost=N`.
-- **Token leak prevention.** GitHub PAT is used for clone + push but never persisted to `.git/config` (we strip the remote URL after clone).
-- **Apply-patch uniqueness.** `apply_patch` requires the target string to be unique in the file — no accidental multi-site rewrites.
-- **Pre-fix HEAD in the audit trail.** Every run records the starting SHA with a ready-to-paste `git reset --hard <sha>` revert.
-- **Flaky-test tolerance.** `run_tests` retries up to 3× on failure; a test that passes on retry is flagged `flaky:true` rather than treated as a pass.
-- **`--dry-run` mode.** Run end-to-end without committing/pushing/opening anything.
-
-## Big-project support (Qiskit / Cirq / TQEC-class repos)
-
-Working on a flat ~50-file repo is easy. Qiskit-scale repos need more. The
-agent has these specific affordances for big scientific-Python codebases:
-
-- **Wide file-type coverage.** Walks `.py`, `.pyx`, `.pxd`, `.pyi`,
-  `.c`/`.cpp`/`.h`, `.rs`, `.go`, `.java`, plus config/docs (`.toml`, `.cfg`,
-  `.ini`, `.yaml`, `.md`, `.rst`) and special files (`Makefile`, `tox.ini`,
-  `noxfile.py`, `CONTRIBUTING.md`, PR templates). No more blind spots.
-- **Keyword relevance prefilter.** Before turn 1, the pipeline scores repo
-  files against the issue text (basename + content tokens, no external API)
-  and injects the top-20 as a starting hint. Lightweight; replaceable with
-  embeddings later.
-- **Monorepo awareness.** Detects Python/Node/Rust sub-packages
-  (`qiskit-terra`, `qiskit-aer`, …) and guesses from issue text which
-  sub-package the change belongs to. Surfaces this as a hint in the prompt.
-- **Richer test-command detection.** `Makefile` with a `test:` target →
-  `make test`. `tox.ini` → `tox`. `noxfile.py` → `nox`. Falls back to
-  `pytest` only when none of those exist.
-- **Lint gate.** Detects `ruff`, `black`, `mypy`, `flake8`, `pylint`,
-  `eslint`, `prettier` from their config files and exposes `run_lint` to
-  the agent. Running tests green but failing `ruff` is the most common
-  scientific-Python CI failure — the agent is told to fix both.
-- **Patch fallback.** `apply_patch` first tries exact match, then
-  whitespace-normalized match (handles tabs-vs-spaces drift in deep Python
-  indentation). Errors include closest-line hints. `apply_patch_range`
-  replaces lines by number — last-resort option when strings won't
-  disambiguate.
-- **Safer `write_file`.** Refuses to overwrite an existing file unless
-  `overwrite:true` is passed. No more silent whole-file wipes.
-- **Context-window protection.** `buildRepoMap` caps at 2000 files;
-  `list_files` caps at 500 with `truncated:true` + a guidance note telling
-  the agent to narrow its query. Ignore-dirs list covers `node_modules`,
-  `target`, `vendor`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `.tox`,
-  `.nox`, `_build`, `site`, `.gradle`, `.idea`, `.turbo`, etc.
-- **Graceful give-up.** The agent can call `give_up({ reason, explanation,
-  blockers })` instead of hitting the iteration limit with a half-fix.
-  Known reasons: `too_complex`, `missing_env`, `test_env_missing`,
-  `insufficient_info`, `needs_human`, `out_of_scope`. With `--comment`
-  the explanation is posted to the original issue.
-- **CONTRIBUTING.md and PR template honored.** Extracts the first 2 KB of
-  `CONTRIBUTING.md` into the agent's prompt so it learns the project's
-  commit-message / DCO / style rules. If the project ships a PR template
-  (`.github/PULL_REQUEST_TEMPLATE.md`), the PR body preserves its structure.
-- **DCO sign-off.** Detects DCO requirement (`.github/dco.yml` or
-  "Signed-off-by" in `CONTRIBUTING.md`) and appends `Signed-off-by:` to
-  commits automatically.
-- **Duplicate-PR guard.** Before cloning, searches open PRs for
-  `Resolves/Fixes/Closes #N` or a matching `fix/issue-N` branch. If one
-  exists, skips with a link. Triage summary shows the skip.
-
-### Honest limitations on the biggest repos
-
-- **We don't provision test environments.** If Qiskit's test suite needs
-  BLAS / compiled extensions / GPU / conda, `pytest` will fail with import
-  errors on a vanilla runner. The agent sees `env_error:true` on the
-  `run_tests` result and is told to `give_up("test_env_missing")` rather
-  than thrash. A proper fix would be a Docker/devcontainer executor —
-  that's on the roadmap.
-- **Relevance prefilter is keyword-based, not semantic.** Works well on
-  issues that name files/functions by string; weaker on abstract bug
-  reports. Dropping in embeddings is a ~50-line replacement.
-
-## Cost transparency
-
-Every run prints token usage and a USD estimate. The audit trail records the same numbers. Typical issue: $0.20 – $1.50 depending on repo size and how many revision passes the self-review triggers.
-
-## Project structure
+**Typical cost per issue:** $0.20 – $1.50, depending on repo size and whether the self-review triggers a revision pass. Bigger repos (Qiskit-scale) trend toward the upper end.
 
 ```
-src/
-  pipeline.js              ← CLI entry
-  orchestrator.js          ← engineering → self-review → revision → PR
-  config.js                ← model, limits, costs
-  agents/
-    engineeringAgent.js    ← issue → autonomous fix
-    reviewCopilot.js       ← diff → structured audit
-    agentLoop.js           ← multi-turn tool-use loop with telemetry
-    tools.js               ← tool schemas + sandboxed handlers
-  prompts/
-    engineering.js         ← agentic system prompt + revision prompt
-    review.js              ← review system prompt + verdict format
-  mapper/
-    repoMap.js             ← walk + read source files, big-project ignores
-    fileRelevance.js       ← keyword scorer for starting-file prefilter
-  utils/
-    githubUrl.js           ← parse owner/repo/number from GitHub URLs
-  cli/
-    output.js              ← pretty terminal + cost summary
-tests/
-  tools.test.js                   ← traversal, allowlist, patch fallback, give_up
-  repoMap.test.js                 ← ignores, extensions, truncation, subdir prefix
-  listFiles.paths.test.js         ← list_files returns repo-root-relative paths
-  orchestrator.test.js            ← test/lint detection, monorepo, CONTRIBUTING
-  fileRelevance.test.js           ← keyword scorer ranks likely-relevant first
-  pipeline.unit.test.js           ← audit-trail sections, PR body, DCO
-  cost.test.js                    ← input/output/cache pricing math
-  githubUrl.test.js
-  agentLoop.integration.test.js   ← mocked-SDK end-to-end + retries + sawTests
+Token usage (engineering + revision)
+  input:        18,204 tok · output:    2,131 tok
+  cache_read:   14,067 tok · cache_create:    0 tok
+  ───────────────────────────────────────────────
+  cost: $0.4912  (in $0.2731 + out $0.1598 + cache_r $0.0211 + cache_c $0.0000)
 ```
 
-## Tests
+> Rates live in `src/config.js` (`COST_INPUT_PER_MTOK`, `COST_OUTPUT_PER_MTOK`, `COST_CACHE_READ_PER_MTOK`, `COST_CACHE_CREATION_PER_MTOK`). Update them if Anthropic pricing changes.
+
+---
+
+## 📋 Audit trail
+
+Every run writes `audit-trail.md` (gitignored). Designed to be skimmable by a human reviewer in under a minute:
+
+```
+# Audit trail — issue #9421: Transpiler drops global phase on conditional gates
+
+**Issue:**        https://github.com/qiskit/qiskit/issues/9421
+**Branch:**       fix/issue-9421
+**Pre-fix HEAD:** 3f4a1b2 — revert with git reset --hard 3f4a1b2
+**Turns used:**   6 of 18
+**Cost:**         $0.4912
+
+## Outcome
+✅ Finished — in single pass
+Preserve global_phase through IfElseOp consolidation...
+
+## Safety gates
+- Self-review verdict: APPROVE
+- Tests observed passing: YES
+- Lint observed passing: YES
+
+## Files touched
+- qiskit/transpiler/passes/optimization/consolidate_blocks.py — 1 edit via apply_patch
+
+## Test runs
+- Total invocations: 1 · Passed: 1 · Failed: 0
+
+## Timeline (condensed)
+- Turn 1 — Scoring the shortlist…
+  - ranked files for: "transpiler global phase conditional gates"
+  - read qiskit/transpiler/passes/optimization/consolidate_blocks.py
+- Turn 2 — Found it — line 142 drops .global_phase…
+  - patched qiskit/transpiler/passes/optimization/consolidate_blocks.py
+- Turn 3 — ran tests: tox → PASS; ran lint: ruff check . → PASS; ran lint: mypy . → PASS
+- Turn 4 — signalled finish
+
+## Self-review report
+[full reviewer output]
+
+## Full tool transcript
+<details>…raw trace for debugging…</details>
+```
+
+---
+
+## 📁 Project structure
+
+```
+github-agent/
+├── src/
+│   ├── pipeline.js              ← CLI entry + subcommands
+│   ├── orchestrator.js          ← engineering → review → revision → PR + project discovery
+│   ├── config.js                ← model, limits, cost rates
+│   ├── agents/
+│   │   ├── engineeringAgent.js  ← issue → autonomous fix
+│   │   ├── reviewCopilot.js     ← diff → structured audit
+│   │   ├── agentLoop.js         ← multi-turn tool-use loop, retries, cost ceiling
+│   │   └── tools.js             ← tool schemas + sandboxed handlers
+│   ├── prompts/
+│   │   ├── engineering.js       ← agentic system prompt, monorepo/lint/contrib hints
+│   │   └── review.js            ← review system prompt + verdict format
+│   ├── mapper/
+│   │   ├── repoMap.js           ← big-project file walker, ignore-dirs, truncation
+│   │   └── fileRelevance.js     ← keyword scorer — starting-file prefilter
+│   ├── utils/
+│   │   ├── cost.js              ← pricing math (input/output/cache)
+│   │   └── githubUrl.js         ← parse owner/repo/number from URLs
+│   ├── cli/
+│   │   └── output.js            ← pretty terminal + cost summary
+│   └── web/
+│       ├── server.js            ← Express SSE dashboard
+│       └── public/index.html    ← live agent feed
+├── tests/                       ← 127 tests across 9 suites
+└── .github/workflows/test.yml   ← CI matrix: Linux/macOS/Windows × Node 18/20/22
+```
+
+---
+
+## 🧪 Tests
 
 ```bash
 npm test
 ```
 
-CI runs the suite on Linux / macOS / Windows across Node 18, 20, and 22.
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contributor workflow.
+**127 tests across 9 suites** covering path traversal, shell-injection guards, patch fallback strategies, repo walker truncation, big-project ignore-dirs, orchestrator verdict parsing, monorepo detection, CONTRIBUTING/DCO reading, cost math (including cache creation), audit trail structure, PR body + template honoring, and a mocked-SDK end-to-end run with retry semantics.
 
-## Roadmap
+CI runs the full suite on **Linux / macOS / Windows × Node 18 / 20 / 22** for every push and pull request. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contributor workflow.
 
-- LangSmith / Helicone telemetry export
-- Pluggable language adapters (rustfmt + cargo, gofmt + go vet, ruff + pytest)
-- Parallel triage (one dashboard pane per issue)
+---
 
-## License
+## 🗺️ Roadmap
 
-MIT
+- [ ] **Docker/devcontainer executor** — so `pytest` works on Qiskit-class repos that need BLAS / CUDA / compiled extensions
+- [ ] **Embedding-based relevance** — drop-in replacement for the keyword prefilter on very abstract issues
+- [ ] **Parallel triage** — one dashboard pane per issue when batching
+- [ ] **LangSmith / Helicone telemetry export**
+- [ ] **Pluggable language adapters** — `rustfmt`+`cargo`, `gofmt`+`go vet`, etc.
+
+---
+
+## 🤝 Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Short version: one behaviour change per PR, add a test with every behaviour change, `npm test` must be green on Node 18/20/22.
+
+---
+
+## 📄 License
+
+[MIT](LICENSE) — use it, fork it, ship it.
