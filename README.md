@@ -415,7 +415,7 @@ npm test
 
 **127 tests across 9 suites** covering path traversal, shell-injection guards, patch fallback strategies, repo walker truncation, big-project ignore-dirs, orchestrator verdict parsing, monorepo detection, CONTRIBUTING/DCO reading, cost math (including cache creation), audit trail structure, PR body + template honoring, and a mocked-SDK end-to-end run with retry semantics.
 
-CI runs the full suite on **Linux / macOS / Windows × Node 18 / 20 / 22** for every push and pull request. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contributor workflow.
+CI runs the full suite on **Linux / macOS / Windows × Node 18 / 20 / 22** for every push and pull request. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contributor workflow and [`TESTING.md`](TESTING.md) for live, end-to-end feature testing recipes.
 
 ---
 
