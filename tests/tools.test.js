@@ -5,9 +5,17 @@ const path = require('path');
 const {
   dispatchTool,
   safeJoin,
-  ALLOWED_TEST_COMMAND_PREFIXES,
+  ALLOWED_TEST_COMMANDS,
   parseTestCommand
 } = require('../src/agents/tools');
+
+// Helper: a test allowlist contains a given command if any prefix matches.
+function allowlistContains(prefix) {
+  const tokens = prefix.split(/\s+/);
+  return ALLOWED_TEST_COMMANDS.some(p =>
+    p.length === tokens.length && p.every((t, i) => t === tokens[i])
+  );
+}
 
 describe('tools', () => {
   let tmpDir;
@@ -117,9 +125,9 @@ describe('tools', () => {
     });
 
     test('allowlist includes common test commands', () => {
-      expect(ALLOWED_TEST_COMMAND_PREFIXES).toContain('npm test');
-      expect(ALLOWED_TEST_COMMAND_PREFIXES).toContain('pytest');
-      expect(ALLOWED_TEST_COMMAND_PREFIXES).toContain('go test');
+      expect(allowlistContains('npm test')).toBe(true);
+      expect(allowlistContains('pytest')).toBe(true);
+      expect(allowlistContains('go test')).toBe(true);
     });
   });
 

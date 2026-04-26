@@ -163,8 +163,6 @@ const ALLOWED_TEST_COMMANDS = [
   ['make', 'test'],
   ['make', 'check']
 ];
-// Legacy export retained for backwards compatibility with existing tests.
-const ALLOWED_TEST_COMMAND_PREFIXES = ALLOWED_TEST_COMMANDS.map(p => p.join(' '));
 
 const ALLOWED_LINT_COMMANDS = [
   ['ruff', 'check'],
@@ -481,7 +479,6 @@ module.exports = {
   HANDLERS,
   dispatchTool,
   safeJoin,
-  ALLOWED_TEST_COMMAND_PREFIXES,
   ALLOWED_TEST_COMMANDS,
   ALLOWED_LINT_COMMANDS,
   parseTestCommand,

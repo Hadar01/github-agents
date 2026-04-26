@@ -426,13 +426,18 @@ async function runIssue({ url, octokit, dashboard, options, log }) {
   // Duplicate-PR guard: skip cloning anything if a PR already claims this
   // issue. Cheap remote check, saves a ~30s clone on dense backlogs.
   if (!options.forcePr) {
-    const existing = await findExistingPrForIssue(octokit, owner, repo, number);
-    if (existing) {
-      log(warn(`An open PR already resolves issue #${number}: ${existing.html_url}`));
+    const dup = await findExistingPrForIssue(octokit, owner, repo, number);
+    if (!dup.ok) {
+      log(err(`Duplicate-PR check failed: ${dup.error}`));
+      log(warn('Refusing to proceed without a clean dedup check. Re-run with --force-pr to override.'));
+      return { ok: false, url, error: 'dedup_check_failed', detail: dup.error };
+    }
+    if (dup.pr) {
+      log(warn(`An open PR already resolves issue #${number}: ${dup.pr.html_url}`));
       log(warn('Skipping. Re-run with --force-pr to process anyway.'));
       return {
         ok: false, url, error: 'duplicate_pr',
-        existingPrUrl: existing.html_url
+        existingPrUrl: dup.pr.html_url
       };
     }
   }
@@ -739,8 +744,11 @@ async function fetchChangedFilesContent(octokit, owner, repo, number, headSha) {
     'Cargo.toml',
     'go.mod',
   ];
-  for (const manifestPath of MANIFEST_PATHS) {
-    if (fileMap[manifestPath]) continue; // already fetched if it was in the diff
+  // Fetch in parallel — sequential awaits cost ~270 ms each on a typical
+  // octokit round trip, so 10 sequential calls add ~2.7 s of latency to
+  // every review. Promise.all collapses that to one round trip's worth.
+  await Promise.all(MANIFEST_PATHS.map(async (manifestPath) => {
+    if (fileMap[manifestPath]) return; // already fetched if it was in the diff
     try {
       const { data } = await octokit.repos.getContent({
         owner, repo, path: manifestPath, ref: headSha
@@ -749,10 +757,15 @@ async function fetchChangedFilesContent(octokit, owner, repo, number, headSha) {
         const text = Buffer.from(data.content, 'base64').toString('utf8');
         if (text.length <= MAX_REVIEW_FILE_BYTES) fileMap[manifestPath] = text;
       }
-    } catch {
-      // 404 means the manifest doesn't exist — that's fine, just skip.
+    } catch (e) {
+      // 404 = manifest not in this project, which is the common case. Anything
+      // else (401, 403, 5xx, network) is a real signal we should surface so
+      // the caller knows the review's manifest context may be incomplete.
+      if (e.status !== 404) {
+        console.warn(warn(`Could not fetch ${manifestPath} for review context: ${e.status || e.code || e.message}`));
+      }
     }
-  }
+  }));
   return fileMap;
 }
 

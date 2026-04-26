@@ -24,8 +24,14 @@ Three tests:
 3. test_no_markers_unaffected
    Bare test. No timeout marker. No conftest hook applies. Passes trivially.
 
-Expected outcome: 1 failed (timeouted), 2 passed. The failed test is the
-proof that the explicit decorator survives the conftest hook.
+Expected outcome on POSIX (Linux/macOS): 1 failed (timeouted), 2 passed.
+The failed test is the proof that the explicit decorator survives the hook.
+
+Expected outcome on Windows: pytest-timeout's default `--timeout-method=thread`
+hard-terminates the process via os._exit(1) on the first timeout, so tests 2
+and 3 may never report. For a deterministic transcript on every platform, run
+`python verify_precedence.py` instead — it inspects the resolved markers via
+--collect-only and never executes the test bodies.
 """
 import time
 

@@ -87,7 +87,10 @@ async function ensureFork(octokit, upstreamOwner, repo, onEvent = () => {}) {
         await octokit.repos.get({ owner: username, repo });
         onEvent({ stage: 'fork_ready', user: username });
         return username;
-      } catch {}
+      } catch {
+        // Polling loop: GitHub returns 404 until the fork is ready.
+        // Swallow the 404 and try again next iteration.
+      }
     }
     throw new Error(`Fork ${username}/${repo} did not become ready within 20s`);
   }
@@ -143,7 +146,10 @@ function detectTestCommand(repoPath) {
     try {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
       if (pkg.scripts && pkg.scripts.test) return 'npm test';
-    } catch {}
+    } catch {
+      // Malformed package.json — fall through to the next detection step.
+      // Don't crash project discovery on a broken JSON file.
+    }
   }
 
   // 4. Python.
@@ -278,22 +284,40 @@ function readContributionGuidelines(repoPath) {
 
 // ---------------------------------------------------------------------------
 // Duplicate PR guard: scan open PRs for ones that already resolve the issue.
+//
+// Returns:
+//   { pr: <PR>, ok: true }    — found a matching open PR
+//   { pr: null, ok: true }    — no match, dedup check ran cleanly
+//   { pr: null, ok: false,
+//     error: <message> }      — API call failed, dedup result is unknown.
+//                                 Caller decides whether to proceed.
+//
+// Uses octokit.paginate so repos with hundreds of open PRs (Qiskit-class)
+// don't silently miss duplicates on page 2+.
 async function findExistingPrForIssue(octokit, owner, repo, issueNumber) {
+  let prs;
   try {
-    const { data: prs } = await octokit.pulls.list({
+    prs = await octokit.paginate(octokit.pulls.list, {
       owner, repo, state: 'open', per_page: 100
     });
-    const needleBranch = `fix/issue-${issueNumber}`;
-    const needleBody = new RegExp(`(resolves|closes|fixes)\\s+#${issueNumber}\\b`, 'i');
-    for (const pr of prs) {
-      if (pr.head && pr.head.ref === needleBranch) return pr;
-      if (pr.body && needleBody.test(pr.body)) return pr;
-      if (pr.title && needleBody.test(pr.title)) return pr;
-    }
-  } catch {
-    // Non-fatal — just skip the dedupe check on API failure.
+  } catch (e) {
+    // Don't silently bypass the safety check on API failure (rate limit,
+    // auth issue, GitHub down). Surface it so the caller can either error
+    // out or override with --force-pr.
+    return {
+      pr: null,
+      ok: false,
+      error: `pulls.list failed: ${e.status || e.code || e.message}`
+    };
   }
-  return null;
+  const needleBranch = `fix/issue-${issueNumber}`;
+  const needleBody = new RegExp(`(resolves|closes|fixes)\\s+#${issueNumber}\\b`, 'i');
+  for (const pr of prs) {
+    if (pr.head && pr.head.ref === needleBranch) return { pr, ok: true };
+    if (pr.body && needleBody.test(pr.body)) return { pr, ok: true };
+    if (pr.title && needleBody.test(pr.title)) return { pr, ok: true };
+  }
+  return { pr: null, ok: true };
 }
 
 module.exports = {
