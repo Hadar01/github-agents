@@ -727,6 +727,32 @@ async function fetchChangedFilesContent(octokit, owner, repo, number, headSha) {
   if (skipped.length) {
     console.warn(warn(`Skipped ${skipped.length} file(s) from review context: ${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? ` (+${skipped.length - 5} more)` : ''}`));
   }
+
+  // ALSO pull dependency-manifest files even if they're not in the diff.
+  // The review prompt requires "check the dep manifest before claiming a
+  // library might be missing" — without this, the rule can't be satisfied.
+  // Cheap (a handful of small files), high signal.
+  const MANIFEST_PATHS = [
+    'pyproject.toml', 'requirements.txt', 'requirements-dev.txt',
+    'setup.cfg', 'setup.py', 'tox.ini', 'noxfile.py',
+    'package.json',
+    'Cargo.toml',
+    'go.mod',
+  ];
+  for (const manifestPath of MANIFEST_PATHS) {
+    if (fileMap[manifestPath]) continue; // already fetched if it was in the diff
+    try {
+      const { data } = await octokit.repos.getContent({
+        owner, repo, path: manifestPath, ref: headSha
+      });
+      if (data.content) {
+        const text = Buffer.from(data.content, 'base64').toString('utf8');
+        if (text.length <= MAX_REVIEW_FILE_BYTES) fileMap[manifestPath] = text;
+      }
+    } catch {
+      // 404 means the manifest doesn't exist — that's fine, just skip.
+    }
+  }
   return fileMap;
 }
 

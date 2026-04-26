@@ -1,3 +1,32 @@
+# ⚠️ FLAWED OUTPUT — kept as a teaching artifact
+
+This file is the **raw output of an earlier version of the review copilot
+prompt**. Multiple findings turned out to be factually wrong when verified
+against pytest and pytest-timeout source.
+
+**Do not use this as a model of the tool's current behavior.** It exists in
+the repo to document:
+- what hallucination from a code-review LLM actually looks like in practice;
+- why we then hardened the system prompt (see `src/prompts/review.js` rule set
+  starting "Anti-hallucination rules");
+- why the maintainer-facing workflow includes a manual curation step.
+
+## What was wrong with this v1 review (verified against source)
+
+| Original claim | Reality |
+|---|---|
+| "Silent no-op if `pytest-timeout` is not installed" | `tqec/pyproject.toml` pins `pytest-timeout>=2.4.0`. The plugin is always installed. The reviewer didn't have `pyproject.toml` in context — fixed in v2 by also fetching dependency manifests. |
+| "If `pytest-timeout` iterates in reverse … slow tests could silently receive the wrong timeout" | Per pytest source, `get_closest_marker` returns the first marker yielded by `iter_markers`. For function-level markers in `own_markers`, that's the first one added. The behavior is deterministic, not version-dependent. |
+| "Tests with an explicit `@pytest.mark.timeout(N)` will have their timeout overridden by the conftest" | **Backwards.** Because the conftest *appends* (`add_marker(append=True)`) and `get_closest_marker` returns the *first* matching marker, an existing decorator wins. The conftest's marker is silently ignored when an explicit one exists. |
+| "If CI passes `--timeout=X` on the command line, that takes precedence over marker-based timeouts" | **Wrong direction.** Per [pytest-timeout docs](https://pypi.org/project/pytest-timeout/) the documented precedence (low → high) is: config → env var → CLI `--timeout` → marker. Markers outrank CLI. |
+
+The improved-prompt output is in `sample-review-tqec-pr894-v2-raw.md`. The
+human-curated final reviewer notes are in `sample-review-tqec-pr894-v3-curated.md`.
+
+---
+
+# Original v1 raw output (DO NOT TRUST)
+
 ## 1. Bug Risk
 
 **Marker ordering / override risk (`tests/conftest.py:9-10`)**
