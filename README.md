@@ -121,7 +121,7 @@ Verdict is one of `APPROVE` / `REQUEST_CHANGES` / `NEEDS_DISCUSSION`. On `REQUES
 
 ## 🔬 Built for big open-source projects
 
-Working on a 50-file toy repo is easy. Working on Qiskit, Cirq, or TQEC is not. `github-agent` has specific affordances for large scientific-Python-class codebases:
+Working on a 50-file toy repo is easy. Working on Qiskit, Cirq, VIO is not. `github-agent` has specific affordances for large scientific-Python-class codebases:
 
 | Problem on a Qiskit-scale repo | What github-agent does |
 |---|---|
