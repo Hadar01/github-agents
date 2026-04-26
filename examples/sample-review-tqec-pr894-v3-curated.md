@@ -41,7 +41,21 @@ decorator wins. Whether this is desirable depends on author intent:
   for debugging, perhaps by accident) **does not get the conftest's 300 s
   bump** — they get 60 s and the slow test fails inside their explicit cap.
 
-### Why this is the actual behaviour, with citations
+### Why this is the actual behaviour, with citations and a runtime check
+
+The claim that the explicit decorator wins is verified two ways:
+
+1. **From source.** The chain of citations below explains why.
+2. **At runtime.** [`verify-marker-precedence/`](verify-marker-precedence/)
+   in this repo is a self-contained 4-file pytest project that uses the
+   exact `conftest.py` from PR #894, defines the three relevant test
+   configurations (slow + explicit-timeout(1), slow only, no markers), and
+   prints what `get_closest_marker("timeout")` resolves to for each test
+   without executing them. Reproducible in 30 seconds with `pip install
+   pytest pytest-timeout && python verify_precedence.py`. Recorded output
+   shows the test with both markers resolves to the explicit `(1,)`.
+
+
 
 `add_marker(marker, append: bool = True) -> None` ([pytest source][1]) — the
 default is `append=True`, so the conftest's marker lands at the **end** of

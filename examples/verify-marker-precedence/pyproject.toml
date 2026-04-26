@@ -1,0 +1,8 @@
+[tool.pytest.ini_options]
+markers = [
+    "slow: mark a test that takes a long time to run.",
+]
+# We DO NOT set `timeout = 30` here, unlike tqec's pyproject.toml — the only
+# thing this minimal repo is testing is whether the conftest's appended marker
+# overrides an explicit @pytest.mark.timeout decorator. Adding a baseline would
+# add a second variable.

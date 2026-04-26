@@ -72,6 +72,15 @@ citations to the source files. Includes:
 
 This is what you would actually paste into the PR thread.
 
+### `verify-marker-precedence/` — runtime confirmation of the curated claim
+
+A 4-file standalone pytest project (`conftest.py` mirroring PR #894 +
+`pyproject.toml` + a 3-test file + a marker inspector script). Run
+`python verify_precedence.py` and it prints, for each test, all timeout
+markers attached to its item and which one `get_closest_marker` resolves to.
+The recorded output (transcript pinned in that directory's README) makes
+the precedence claim empirically checkable, not just source-cited.
+
 ### The point
 
 The workflow demonstrated by these three files is the workflow we recommend
