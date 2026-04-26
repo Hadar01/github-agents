@@ -4,3 +4,6 @@ repos/
 audit-trail.md
 review-report.md
 coverage/
+
+__pycache__/
+*.pyc
