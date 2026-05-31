@@ -1,6 +1,6 @@
 {
   "name": "github-agent",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Autonomous GitHub engineering pipeline: takes an issue, ships a PR, and reviews its own diff before opening it.",
   "main": "src/pipeline.js",
   "bin": {
@@ -43,6 +43,7 @@
     "src/",
     "scripts/",
     "examples/",
+    "action.yml",
     "README.md",
     "LICENSE",
     "CONTRIBUTING.md",

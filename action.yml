@@ -1,0 +1,113 @@
+name: 'github-agent'
+description: 'Autonomous PR review and issue-to-PR engineering with Claude — review every PR or auto-fix labeled issues, no local setup.'
+author: 'Hadar01'
+branding:
+  icon: 'git-pull-request'
+  color: 'purple'
+
+inputs:
+  command:
+    description: 'Which pipeline to run: review | issue | triage'
+    required: true
+  target:
+    description: >-
+      GitHub issue / PR / repo URL to act on. If omitted, it is derived from the
+      triggering event (the PR URL on pull_request, the issue URL on issues).
+    required: false
+    default: ''
+  anthropic-api-key:
+    description: 'Anthropic API key. Store it as an encrypted repo/org secret.'
+    required: true
+  github-token:
+    description: 'Token used for GitHub API calls. Defaults to the workflow token.'
+    required: false
+    default: ${{ github.token }}
+  post:
+    description: '(review) Post the review back to the PR. true/false.'
+    required: false
+    default: 'true'
+  comment:
+    description: '(issue) Comment a link-back on the source issue after the PR opens. true/false.'
+    required: false
+    default: 'false'
+  fork:
+    description: '(issue) Push to your fork and open the PR from there. true/false.'
+    required: false
+    default: 'false'
+  fail-on-request-changes:
+    description: >-
+      (review) If true, a REQUEST_CHANGES / NEEDS_DISCUSSION verdict fails the
+      check and blocks merge. If false (default), the review is advisory: it
+      posts findings but never turns the check red.
+    required: false
+    default: 'false'
+  max-cost:
+    description: 'Hard USD ceiling for the run (passed as --max-cost). Empty = project default.'
+    required: false
+    default: ''
+  node-version:
+    description: 'Node.js version to run the agent with.'
+    required: false
+    default: '20'
+  extra-args:
+    description: 'Additional raw CLI flags appended verbatim (e.g. "--label=bug --max=3").'
+    required: false
+    default: ''
+
+outputs:
+  verdict:
+    description: 'Review verdict: APPROVE / REQUEST_CHANGES / NEEDS_DISCUSSION / UNKNOWN.'
+    value: ${{ steps.run.outputs.verdict }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install github-agent dependencies
+      shell: bash
+      run: npm ci --omit=dev --prefix "${{ github.action_path }}"
+
+    - name: Resolve target URL
+      id: target
+      shell: bash
+      env:
+        EXPLICIT_TARGET: ${{ inputs.target }}
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        ISSUE_URL: ${{ github.event.issue.html_url }}
+      run: |
+        TARGET="$EXPLICIT_TARGET"
+        if [ -z "$TARGET" ]; then
+          if [ -n "$PR_URL" ]; then
+            TARGET="$PR_URL"
+          elif [ -n "$ISSUE_URL" ]; then
+            TARGET="$ISSUE_URL"
+          fi
+        fi
+        if [ -z "$TARGET" ]; then
+          echo "::error::No target URL. Set the 'target' input, or trigger on pull_request / issues."
+          exit 1
+        fi
+        echo "url=$TARGET" >> "$GITHUB_OUTPUT"
+
+    - name: Run github-agent
+      id: run
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        ARGS=()
+        if [ "${{ inputs.command }}" = "review" ]; then
+          [ "${{ inputs.post }}" = "true" ] && ARGS+=(--post)
+          [ "${{ inputs.fail-on-request-changes }}" != "true" ] && ARGS+=(--advisory)
+        fi
+        [ "${{ inputs.comment }}" = "true" ] && ARGS+=(--comment)
+        [ "${{ inputs.fork }}" = "true" ] && ARGS+=(--fork)
+        [ -n "${{ inputs.max-cost }}" ] && ARGS+=(--max-cost=${{ inputs.max-cost }})
+        node "${{ github.action_path }}/src/pipeline.js" \
+          "${{ inputs.command }}" "${{ steps.target.outputs.url }}" \
+          "${ARGS[@]}" ${{ inputs.extra-args }}

@@ -1,0 +1,32 @@
+# Auto-fix issues with github-agent: label an issue `agent-fix` and the agent
+# clones the repo, writes a patch, self-reviews it, and opens a PR.
+#
+# Copy this into your repo at .github/workflows/issue-fix.yml and add an
+# ANTHROPIC_API_KEY secret. The built-in GITHUB_TOKEN handles the PR.
+#
+# Safety: the agent only runs when a maintainer applies the `agent-fix` label,
+# so random issue authors can't trigger paid runs. The pipeline's own PR gate
+# still refuses to open a PR on a failed self-review.
+name: Issue fix (github-agent)
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  fix:
+    if: github.event.label.name == 'agent-fix'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Engineer a fix and open a PR
+        uses: Hadar01/github-agents@v1
+        with:
+          command: issue
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          comment: 'true'        # link the PR back on the issue
+          max-cost: '2.50'

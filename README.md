@@ -17,7 +17,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/model-Claude%20Sonnet%204.6-blueviolet?style=flat-square&logo=anthropic" alt="Claude Sonnet 4.6">
-  <img src="https://img.shields.io/badge/tests-127%20passing-brightgreen?style=flat-square" alt="127 tests passing">
+  <img src="https://img.shields.io/badge/tests-146%20passing-brightgreen?style=flat-square" alt="146 tests passing">
   <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=flat-square&logo=node.js" alt="Node 18+">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
   <img src="https://img.shields.io/badge/CI-Linux%20%7C%20macOS%20%7C%20Windows-555?style=flat-square&logo=githubactions" alt="CI matrix">
@@ -166,6 +166,12 @@ Bug-risk findings must cite `file:line`. The verdict prompt biases toward
 verdict design makes it CI-gateable as a *"block merge until a human
 acknowledges the bot's concerns"* check, without ever opening a PR comment.
 
+When you *do* post (`--post`), findings land as **inline comments anchored to
+the exact diff line** — not one wall-of-text blob. Each finding's `(file, line)`
+is validated against the PR's diff hunks before posting, so a hallucinated line
+number can never 422 the whole review; anything that won't anchor is folded into
+the review summary with its `file:line` instead of being dropped.
+
 See [`examples/`](examples/) for sample artifacts produced by real runs.
 
 ---
@@ -232,6 +238,82 @@ npm run review -- https://github.com/your/repo/pull/123
 
 ---
 
+## ⚡ Run it in CI — the GitHub Action
+
+The fastest way to get a whole team using this: don't make anyone install
+anything. Drop a workflow into your repo and `github-agent` reviews every PR
+(and can auto-fix labeled issues) on GitHub's runners. No clone, no `.env` —
+just one secret.
+
+**Auto-review every PR** (`.github/workflows/pr-review.yml`):
+
+```yaml
+name: PR review (github-agent)
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Hadar01/github-agents@v1
+        with:
+          command: review
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Advisory by default — posts findings, never blocks merge.
+          # Set 'true' to make REQUEST_CHANGES fail the check (a merge gate).
+          fail-on-request-changes: 'false'
+```
+
+**Auto-fix labeled issues** — apply the `agent-fix` label and it opens a PR
+(`.github/workflows/issue-fix.yml`):
+
+```yaml
+on:
+  issues:
+    types: [labeled]
+permissions: { contents: write, issues: write, pull-requests: write }
+jobs:
+  fix:
+    if: github.event.label.name == 'agent-fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Hadar01/github-agents@v1
+        with:
+          command: issue
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          comment: 'true'
+```
+
+Add one secret (**Settings → Secrets → Actions → `ANTHROPIC_API_KEY`**); the
+built-in `GITHUB_TOKEN` handles the rest. Ready-to-copy files live in
+[`examples/workflows/`](examples/workflows/).
+
+| Action input | Default | Effect |
+|---|---|---|
+| `command` | — | `review`, `issue`, or `triage`. |
+| `target` | event URL | PR/issue/repo URL. Auto-derived from the trigger if omitted. |
+| `anthropic-api-key` | — | **Required.** Store as a repo/org secret. |
+| `github-token` | `${{ github.token }}` | Token for GitHub API calls. |
+| `post` | `true` | (review) Post the review back to the PR. |
+| `fail-on-request-changes` | `false` | (review) `true` = block merge on a bad verdict; `false` = advisory. |
+| `comment` | `false` | (issue) Link the PR back on the source issue. |
+| `fork` | `false` | (issue) Push to your fork and PR from there. |
+| `max-cost` | project default | USD ceiling for the run. |
+
+The job exposes the verdict as an output (`steps.<id>.outputs.verdict`) and
+renders it in the job summary, so you can branch on it in later steps.
+
+> 🔒 **Why `pull_request_target`?** Review fetches the PR diff via the GitHub
+> API and sends it to Claude — it never checks out or runs the PR's code. That
+> makes `pull_request_target` safe here, and it's what lets reviews on
+> **fork PRs** read the API-key secret (plain `pull_request` can't).
+
+---
+
 ## 📖 Commands & flags
 
 ```
@@ -245,7 +327,8 @@ node src/pipeline.js triage <repo-url>    [flags]
 | `--dry-run` | `issue`, `triage` | Full pipeline — skip commit/push/PR. |
 | `--fork` | `issue`, `triage` | Push to your fork; open PR from fork to upstream. |
 | `--comment` | `issue`, `triage` | Post a link-back comment on the original issue after PR opens. |
-| `--post` | `review` | Submit review as a PR review comment (or issue comment fallback). |
+| `--post` | `review` | Submit the review, with bug findings as **inline `file:line` comments** anchored to the diff (issue-comment fallback if blocked). |
+| `--advisory` | `review` | Always exit 0 (post findings without failing the run). Powers the Action's non-blocking mode. |
 | `--force-pr` | `issue`, `triage` | Override PR safety gate. Ship on `REQUEST_CHANGES` / no passing tests. |
 | `--web` | any | Start a **live dashboard** at `http://localhost:3000`. |
 | `--port=N` | any | Dashboard port (default `3000`). |
@@ -425,6 +508,7 @@ github-agent/
 │   │   └── fileRelevance.js     ← keyword scorer — starting-file prefilter
 │   ├── utils/
 │   │   ├── cost.js              ← pricing math (input/output/cache)
+│   │   ├── diffLines.js         ← unified-diff parser — valid inline-comment anchors
 │   │   └── githubUrl.js         ← parse owner/repo/number from URLs
 │   ├── cli/
 │   │   └── output.js            ← pretty terminal + cost summary
@@ -443,7 +527,7 @@ github-agent/
 npm test
 ```
 
-**127 tests across 9 suites** covering path traversal, shell-injection guards, patch fallback strategies, repo walker truncation, big-project ignore-dirs, orchestrator verdict parsing, monorepo detection, CONTRIBUTING/DCO reading, cost math (including cache creation), audit trail structure, PR body + template honoring, and a mocked-SDK end-to-end run with retry semantics.
+**146 tests across 12 suites** covering path traversal, shell-injection guards, patch fallback strategies, repo walker truncation, big-project ignore-dirs, orchestrator verdict parsing, monorepo detection, CONTRIBUTING/DCO reading, cost math (including cache creation), audit trail structure, PR body + template honoring, GitHub Action verdict reporting, unified-diff line anchoring, inline-comment parsing/partitioning, and a mocked-SDK end-to-end run with retry semantics.
 
 CI runs the full suite on **Linux / macOS / Windows × Node 18 / 20 / 22** for every push and pull request. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contributor workflow and [`TESTING.md`](TESTING.md) for live, end-to-end feature testing recipes.
 

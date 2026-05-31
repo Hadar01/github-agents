@@ -122,7 +122,28 @@ concerns into the same PR.
 State one of: **APPROVE**, **REQUEST_CHANGES**, **NEEDS_DISCUSSION**.
 
 Follow it with a one-paragraph justification that ties the verdict to the most
-load-bearing finding above.`;
+load-bearing finding above.
+
+## 6. Inline Comments (machine-readable)
+Emit a SINGLE fenced \`\`\`json code block — and nothing else in this section —
+containing an array of the findings above that anchor to a specific changed
+line, so they can be posted as inline PR comments. Schema:
+
+\`\`\`json
+[
+  { "file": "src/login.js", "line": 42, "severity": "blocking", "comment": "Null deref: token may be null here." }
+]
+\`\`\`
+
+Rules for this block — they exist to keep the inline comments trustworthy:
+- \`file\` must be a path exactly as it appears in the diff.
+- \`line\` must be a line number in the NEW version of the file (a line the diff
+  ADDS or shows as context). Never cite a deleted line or a line outside the
+  diff — it cannot be anchored and will be dropped.
+- \`severity\` is "blocking" or "nit".
+- \`comment\` is one or two sentences, specific and actionable.
+- Include ONLY findings you verified from the diff/context. Omit speculation.
+- If you have no anchorable findings, emit an empty array: \`[]\`.`;
 }
 
 module.exports = { REVIEW_SYSTEM_PROMPT, buildReviewPrompt };

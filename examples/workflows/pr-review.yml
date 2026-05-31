@@ -1,0 +1,34 @@
+# Auto-review every pull request with github-agent.
+#
+# Copy this file into your repo at .github/workflows/pr-review.yml and add an
+# ANTHROPIC_API_KEY secret (Settings → Secrets and variables → Actions).
+#
+# Why pull_request_target instead of pull_request:
+#   github-agent reviews a PR by fetching its diff through the GitHub API and
+#   sending it to Claude — it never checks out or executes the PR's code. That
+#   makes pull_request_target safe here, and it is what lets reviews on PRs from
+#   forks read the ANTHROPIC_API_KEY secret (plain pull_request cannot).
+name: PR review (github-agent)
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Review the pull request
+        uses: Hadar01/github-agents@v1
+        with:
+          command: review
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          post: 'true'
+          # Advisory by default: posts findings, never blocks merge.
+          # Flip to 'true' to make REQUEST_CHANGES fail the check (a merge gate).
+          fail-on-request-changes: 'false'
+          max-cost: '1.50'
