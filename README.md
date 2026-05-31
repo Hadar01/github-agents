@@ -204,7 +204,23 @@ The review subcommand **exits non-zero** on `REQUEST_CHANGES` so you can wire it
 - An [Anthropic API key](https://console.anthropic.com/)
 - A [GitHub Personal Access Token](https://github.com/settings/tokens) — `public_repo` for OSS work, `repo` for private repos
 
-### Installation
+### Install
+
+**No clone — just run it** (published on npm as [`gitagent`](https://www.npmjs.com/package/gitagent)):
+
+```bash
+# one-off, no install:
+ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=ghp_... \
+  npx gitagent review https://github.com/your/repo/pull/123
+
+# or install the `github-agent` command globally:
+npm install -g gitagent
+github-agent review https://github.com/your/repo/pull/123
+```
+
+> The npm package is named `gitagent`; the command it installs is `github-agent`.
+
+**Or clone for development:**
 
 ```bash
 git clone https://github.com/Hadar01/github-agents.git

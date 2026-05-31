@@ -1,5 +1,5 @@
 {
-  "name": "github-agent",
+  "name": "gitagent",
   "version": "1.0.0",
   "description": "Autonomous GitHub engineering pipeline: takes an issue, ships a PR, and reviews its own diff before opening it.",
   "main": "src/pipeline.js",
@@ -12,7 +12,8 @@
     "review": "node src/pipeline.js review",
     "triage": "node src/pipeline.js triage",
     "verify": "node scripts/verify.js",
-    "smoke": "node -e \"const p = require('./src/pipeline.js'); if (typeof p.buildAuditTrail !== 'function') process.exit(1); console.log('ok');\""
+    "smoke": "node -e \"const p = require('./src/pipeline.js'); if (typeof p.buildAuditTrail !== 'function') process.exit(1); console.log('ok');\"",
+    "prepublishOnly": "npm test"
   },
   "keywords": [
     "ai",

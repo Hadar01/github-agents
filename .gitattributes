@@ -1,0 +1,11 @@
+# Normalize line endings to LF in the repository and on checkout everywhere.
+# The CLI entrypoint (src/pipeline.js) is published to npm; its `#!/usr/bin/env
+# node` shebang MUST be LF, or `npx`/global install fails on Linux & macOS with
+# "env: node\r: No such file or directory". Forcing eol=lf keeps that correct
+# even when checked out on Windows (core.autocrlf=true).
+* text=auto eol=lf
+
+# Sample artifacts and lockfiles are text too — leave them to the rule above.
+*.png binary
+*.jpg binary
+*.gif binary
