@@ -206,19 +206,19 @@ The review subcommand **exits non-zero** on `REQUEST_CHANGES` so you can wire it
 
 ### Install
 
-**No clone — just run it** (published on npm as [`gitagent`](https://www.npmjs.com/package/gitagent)):
+**No clone — just run it** (published on npm as [`@aarushpandey/gitagent`](https://www.npmjs.com/package/@aarushpandey/gitagent)):
 
 ```bash
 # one-off, no install:
 ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=ghp_... \
-  npx gitagent review https://github.com/your/repo/pull/123
+  npx @aarushpandey/gitagent review https://github.com/your/repo/pull/123
 
 # or install the `github-agent` command globally:
-npm install -g gitagent
+npm install -g @aarushpandey/gitagent
 github-agent review https://github.com/your/repo/pull/123
 ```
 
-> The npm package is named `gitagent`; the command it installs is `github-agent`.
+> The npm package is named `@aarushpandey/gitagent`; the command it installs is `github-agent`.
 
 **Or clone for development:**
 

@@ -1,6 +1,9 @@
 {
-  "name": "gitagent",
+  "name": "@aarushpandey/gitagent",
   "version": "1.0.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "Autonomous GitHub engineering pipeline: takes an issue, ships a PR, and reviews its own diff before opening it.",
   "main": "src/pipeline.js",
   "bin": {
