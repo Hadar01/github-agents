@@ -445,6 +445,54 @@ function formatDroppedFindings(findings, heading = 'Findings not anchored to a d
   return lines.join('\n');
 }
 
+// Submit a PR review, degrading gracefully through GitHub's review rules. A 422
+// from createReview has two distinct causes that need opposite remedies:
+//
+//   • the EVENT is rejected — you cannot APPROVE or REQUEST_CHANGES your own PR
+//     (GitHub 422s these regardless of the comments). Remedy: downgrade the
+//     event to COMMENT, which is always allowed, and KEEP the inline comments.
+//   • an inline ANCHOR is invalid — a comment points at a line not in the diff,
+//     which 422s the whole review. Remedy: drop the inline comments and post a
+//     summary-only review with every finding folded into the body.
+//
+// We try the ideal call, then the event remedy, then the anchor remedy, so
+// inline comments survive whenever they possibly can. Throws only if even the
+// summary-only COMMENT review fails, letting the caller fall back to an issue
+// comment. `createReview` is injected (owner/repo/pull_number pre-bound) so this
+// ladder is unit-testable without a live Octokit.
+async function postReviewWithFallback({ createReview, event, body, bodyAllInline, anchored, log = () => {} }) {
+  const withComments = !!(anchored && anchored.length);
+  const call = (ev, useComments) => createReview({
+    event: ev,
+    body: useComments ? body : bodyAllInline,
+    ...(useComments && withComments ? { comments: anchored } : {})
+  });
+
+  try {
+    return await call(event, true);
+  } catch (e1) {
+    if (e1.status !== 422) throw e1;
+
+    // Cause #1: the event was rejected. Retry as COMMENT, keeping inline comments.
+    if (event !== 'COMMENT') {
+      const verb = event === 'APPROVE' ? 'approve' : 'request changes on';
+      log(`'${event}' review rejected (422) — you likely can't ${verb} your own PR. Retrying as a COMMENT review, keeping inline comments.`);
+      try {
+        return await call('COMMENT', true);
+      } catch (e2) {
+        if (e2.status !== 422) throw e2;
+        // Still 422 with COMMENT → the inline anchors are the culprit (cause #2).
+        log('inline anchors rejected (422); posting a summary-only COMMENT review with findings in the body.');
+        return await call('COMMENT', false);
+      }
+    }
+
+    // Event was already COMMENT, so the 422 is the anchors (cause #2).
+    log('inline anchors rejected (422); posting a summary-only COMMENT review with findings in the body.');
+    return await call('COMMENT', false);
+  }
+}
+
 // --- dashboard wiring ---
 async function maybeStartDashboard() {
   if (!FLAGS.has('--web')) return null;
@@ -885,24 +933,11 @@ async function handleReview(url, options = {}) {
     const bodyAllInline = `${credit}\n\n**Verdict:** ${verdict}\n\n${report}${formatDroppedFindings(inline)}`;
 
     try {
-      let submitted;
-      try {
-        ({ data: submitted } = await octokit.pulls.createReview({
-          owner, repo, pull_number: number, event, body,
-          ...(anchored.length ? { comments: anchored } : {})
-        }));
-      } catch (e) {
-        // A single bad inline anchor 422s the entire review. Retry once with a
-        // summary-only review (all findings in the body) so it still lands.
-        if (e.status === 422 && anchored.length) {
-          console.log(warn('inline anchors rejected (422); reposting as a summary-only review.'));
-          ({ data: submitted } = await octokit.pulls.createReview({
-            owner, repo, pull_number: number, event, body: bodyAllInline
-          }));
-        } else {
-          throw e;
-        }
-      }
+      const { data: submitted } = await postReviewWithFallback({
+        createReview: (args) => octokit.pulls.createReview({ owner, repo, pull_number: number, ...args }),
+        event, body, bodyAllInline, anchored,
+        log: (m) => console.log(warn(m))
+      });
       console.log(ok(`Posted: ${submitted.html_url}`));
     } catch (e) {
       // Falling back to a plain issue-style comment — this works even when
@@ -981,5 +1016,6 @@ module.exports = {
   handleTriage,
   emitGithubActionVerdict,
   partitionInlineComments,
-  formatDroppedFindings
+  formatDroppedFindings,
+  postReviewWithFallback
 };
